@@ -97,13 +97,20 @@ def scrape(base_url: str,
         
         if dry_run:
             click.echo(f"🔍 Dry run mode - analyzing what would be scraped from: {base_url}")
-            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns)
-            urls = scraper.discover_urls(base_url)
-            click.echo(f"📄 Would scrape {len(urls)} pages:")
-            for i, url in enumerate(urls[:10], 1):  # Show first 10
-                click.echo(f"  {i}. {url}")
-            if len(urls) > 10:
-                click.echo(f"  ... and {len(urls) - 10} more pages")
+            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
+            try:
+                urls, classifications = scraper.discover_urls(base_url)
+                if urls:
+                    click.echo(f"\n📄 Would scrape {len(urls)} pages:")
+                    for i, url in enumerate(urls[:10], 1):  # Show first 10
+                        content_type = classifications.get(url, "📄 Content")
+                        click.echo(f"  {i}. {content_type.value if hasattr(content_type, 'value') else content_type} {url}")
+                    if len(urls) > 10:
+                        click.echo(f"  ... and {len(urls) - 10} more pages")
+                else:
+                    click.echo("❌ No suitable URLs found for scraping")
+            finally:
+                scraper.cleanup()
             return
         
         # Handle preview mode with interactive approval
@@ -119,16 +126,19 @@ def scrape(base_url: str,
             
             if preview or not approved_urls:
                 click.echo(f"🔍 Discovering URLs from: {base_url}")
-                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns)
-                discovered_urls = scraper.discover_urls(base_url)
-                
-                if not discovered_urls:
-                    click.echo("❌ No URLs discovered. Check the URL and try again.")
-                    sys.exit(1)
-                
-                # Build tree and interactive approval
-                tree = url_preview.build_url_tree(discovered_urls)
-                approved_urls = url_preview.interactive_exclude(tree)
+                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
+                try:
+                    discovered_urls, classifications = scraper.discover_urls(base_url)
+                    
+                    if not discovered_urls:
+                        click.echo("❌ No URLs discovered. Check the URL and try again.")
+                        sys.exit(1)
+                    
+                    # Build tree with classifications and interactive approval
+                    tree = url_preview.build_url_tree(discovered_urls, classifications)
+                    approved_urls = url_preview.interactive_exclude(tree)
+                finally:
+                    scraper.cleanup()
                 
                 if approved_urls is None:  # User quit
                     sys.exit(0)
@@ -145,16 +155,22 @@ def scrape(base_url: str,
             # Scrape approved URLs
             if approved_urls:
                 click.echo(f"🚀 Starting to scrape {len(approved_urls)} approved URLs")
-                scraper = WebScraper(app_config, exclude_patterns=exclude_patterns)
-                scraped_data = scraper.scrape_approved_urls(approved_urls)
+                scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose)
+                try:
+                    scraped_data = scraper.scrape_approved_urls(approved_urls)
+                finally:
+                    scraper.cleanup()
             else:
                 click.echo("❌ No URLs approved for scraping.")
                 sys.exit(1)
         else:
             # Standard scraping mode
             click.echo(f"🚀 Starting to scrape: {base_url}")
-            scraper = WebScraper(app_config, exclude_patterns=exclude_patterns)
-            scraped_data = scraper.scrape_website(base_url)
+            scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose)
+            try:
+                scraped_data = scraper.scrape_website(base_url)
+            finally:
+                scraper.cleanup()
         
         if not scraped_data:
             click.echo("❌ No content was scraped. Check the URL and try again.")
@@ -163,9 +179,15 @@ def scrape(base_url: str,
         click.echo(f"✅ Scraped {len(scraped_data)} pages")
         
         # Generate PDF
-        click.echo("📄 Generating PDF...")
+        from .progress_tracker import ProgressTracker, Phase
+        progress = ProgressTracker(verbose=verbose)
+        progress.start_phase(Phase.PDF_GENERATION, 1, "Creating PDF document")
+        
         pdf_generator = PDFGenerator(app_config)
         output_path = pdf_generator.generate_pdf(scraped_data, base_url)
+        
+        progress.finish_phase("PDF generated successfully")
+        progress.cleanup()
         
         click.echo(f"🎉 PDF generated successfully: {output_path}")
         

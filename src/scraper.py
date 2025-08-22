@@ -3,24 +3,30 @@ import time
 import logging
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
-from typing import Set, List, Dict, Optional, Any
+from typing import Set, List, Dict, Optional, Any, Tuple
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 import re
 
 from .extractor import ContentExtractor
+from .content_classifier import ContentClassifier, ContentType
+from .progress_tracker import ProgressTracker, Phase
 
 
 class WebScraper:
-    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None):
+    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False):
         self.config = config
         self.dry_run = dry_run
+        self.verbose = verbose
         self.session = requests.Session()
         self.visited_urls: Set[str] = set()
         self.discovered_urls: Set[str] = set()
+        self.url_classifications: Dict[str, ContentType] = {}
         self.base_domain = ""
         self.logger = logging.getLogger(__name__)
         self.extractor = ContentExtractor(config)
+        self.classifier = ContentClassifier()
+        self.progress = ProgressTracker(verbose=verbose)
         self.exclude_patterns = exclude_patterns or []
         
         # Configure session
@@ -314,3 +320,9 @@ class WebScraper:
             
         self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
         return scraped_data
+    
+    def cleanup(self):
+        """Clean up resources."""
+        self.progress.cleanup()
+        if hasattr(self.session, 'close'):
+            self.session.close()

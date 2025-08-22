@@ -5,19 +5,30 @@ from pathlib import Path
 from typing import List, Set, Dict, Optional, Tuple
 from urllib.parse import urlparse, unquote
 import click
+from .content_classifier import ContentClassifier, ContentType
 
 
 class URLPreview:
-    """Handle URL discovery, preview, and interactive approval."""
+    """Handle URL discovery, preview, and interactive approval with content classification."""
     
     def __init__(self, exclude_patterns: List[str] = None):
         self.exclude_patterns = exclude_patterns or []
         self.excluded_urls: Set[str] = set()
         self.approved_urls: Set[str] = set()
+        self.classifier = ContentClassifier()
+        self.url_classifications: Dict[str, ContentType] = {}
         
-    def build_url_tree(self, urls: List[str]) -> Dict[str, any]:
-        """Build a hierarchical tree structure from URLs."""
-        tree = defaultdict(lambda: {'urls': set(), 'children': defaultdict(dict)})
+    def build_url_tree(self, urls: List[str], classifications: Dict[str, ContentType] = None) -> Dict[str, any]:
+        """Build a hierarchical tree structure from URLs with classification."""
+        tree = defaultdict(lambda: {'urls': set(), 'children': defaultdict(dict), 'classifications': {}})
+        
+        # Store classifications for later use
+        if classifications:
+            self.url_classifications.update(classifications)
+        else:
+            # Classify URLs if not provided
+            for url in urls:
+                self.url_classifications[url] = self.classifier.classify_url(url)
         
         for url in urls:
             if self._is_excluded(url):
@@ -28,17 +39,19 @@ class URLPreview:
             
             current = tree[parsed.netloc]
             current['urls'].add(url)
+            current['classifications'][url] = self.url_classifications.get(url, ContentType.CONTENT)
             
             # Build tree structure
             for i, part in enumerate(path_parts):
                 part = unquote(part)  # URL decode
                 if 'children' not in current:
-                    current['children'] = defaultdict(lambda: {'urls': set(), 'children': defaultdict(dict)})
+                    current['children'] = defaultdict(lambda: {'urls': set(), 'children': defaultdict(dict), 'classifications': {}})
                 
                 if part not in current['children']:
-                    current['children'][part] = {'urls': set(), 'children': defaultdict(dict)}
+                    current['children'][part] = {'urls': set(), 'children': defaultdict(dict), 'classifications': {}}
                 
                 current['children'][part]['urls'].add(url)
+                current['children'][part]['classifications'][url] = self.url_classifications.get(url, ContentType.CONTENT)
                 current = current['children'][part]
         
         return dict(tree)
@@ -51,24 +64,28 @@ class URLPreview:
         return url in self.excluded_urls
     
     def display_tree(self, tree: Dict, indent: int = 0, parent_path: str = "") -> List[Tuple[str, str, int]]:
-        """Display URL tree with numbering for interactive selection."""
+        """Display URL tree with content classification and numbering for interactive selection."""
         items = []
         
         for domain, domain_data in tree.items():
             if indent == 0:  # Root domain
                 domain_urls = [url for url in domain_data['urls'] if not self._is_excluded(url)]
                 if domain_urls or domain_data['children']:
-                    click.echo(f"{'  ' * indent}🌐 {domain} ({len(domain_urls)} pages)")
+                    # Count by type for domain summary
+                    type_counts = self._get_type_counts(domain_data)
+                    type_summary = self._format_type_summary(type_counts)
+                    
+                    click.echo(f"{'  ' * indent}🌐 {domain} ({len(domain_urls)} pages{type_summary})")
                     items.append((domain, parent_path + domain, indent))
             
             # Process children
-            children_items = self._display_children(domain_data['children'], indent + 1, parent_path + domain + "/")
+            children_items = self._display_children(domain_data['children'], indent + 1, parent_path + domain + "/", domain_data.get('classifications', {}))
             items.extend(children_items)
         
         return items
     
-    def _display_children(self, children: Dict, indent: int, parent_path: str) -> List[Tuple[str, str, int]]:
-        """Recursively display child nodes."""
+    def _display_children(self, children: Dict, indent: int, parent_path: str, parent_classifications: Dict = None) -> List[Tuple[str, str, int]]:
+        """Recursively display child nodes with content classification."""
         items = []
         
         for i, (name, node_data) in enumerate(sorted(children.items())):
@@ -76,21 +93,31 @@ class URLPreview:
             node_urls = [url for url in node_data['urls'] if not self._is_excluded(url)]
             
             if node_urls or node_data['children']:
-                # Choose appropriate icon
-                if node_data['children']:
-                    icon = "📁" if node_urls else "📂"
-                else:
-                    icon = "📄"
+                # Get type information
+                node_classifications = node_data.get('classifications', parent_classifications or {})
+                type_counts = self._get_type_counts_from_classifications(node_classifications, node_urls)
+                
+                # Choose appropriate icon based on primary content type
+                primary_type = self._get_primary_type(type_counts)
+                icon = self._get_type_icon(primary_type, bool(node_data['children']))
+                
+                # Format type summary
+                type_summary = self._format_type_summary(type_counts, compact=True)
                 
                 excluded_count = len([url for url in node_data['urls'] if self._is_excluded(url)])
                 status = f" [{excluded_count} excluded]" if excluded_count else ""
                 
-                click.echo(f"{'  ' * indent}{len(items)+1:2d}. {icon} {name} ({len(node_urls)} pages{status})")
+                click.echo(f"{'  ' * indent}{len(items)+1:2d}. {icon} {name} ({len(node_urls)} pages{type_summary}{status})")
                 items.append((name, current_path, indent))
                 
                 # Recursively display children
                 if node_data['children']:
-                    child_items = self._display_children(node_data['children'], indent + 1, current_path + "/")
+                    child_items = self._display_children(
+                        node_data['children'], 
+                        indent + 1, 
+                        current_path + "/",
+                        node_classifications
+                    )
                     items.extend(child_items)
         
         return items
@@ -216,7 +243,8 @@ class URLPreview:
         click.echo(f"\n❌ Excluded URLs ({len(self.excluded_urls)}):")
         click.echo("-" * 40)
         for i, url in enumerate(sorted(self.excluded_urls), 1):
-            click.echo(f"  {i:2d}. {url}")
+            classification = self.url_classifications.get(url, ContentType.CONTENT)
+            click.echo(f"  {i:2d}. {classification.value} {url}")
     
     def _get_approved_urls(self, tree: Dict) -> Set[str]:
         """Get final list of approved URLs (non-excluded)."""
@@ -278,3 +306,94 @@ class URLPreview:
         except (FileNotFoundError, json.JSONDecodeError) as e:
             click.echo(f"❌ Error loading approved URLs: {e}")
             return set()
+    
+    def _get_type_counts(self, node_data: Dict) -> Dict[ContentType, int]:
+        """Count URLs by content type in a node."""
+        type_counts = {content_type: 0 for content_type in ContentType}
+        
+        classifications = node_data.get('classifications', {})
+        for url in node_data['urls']:
+            if not self._is_excluded(url):
+                content_type = classifications.get(url, self.url_classifications.get(url, ContentType.CONTENT))
+                type_counts[content_type] += 1
+        
+        # Recursively count children
+        for child_node in node_data.get('children', {}).values():
+            child_counts = self._get_type_counts(child_node)
+            for content_type, count in child_counts.items():
+                type_counts[content_type] += count
+        
+        return type_counts
+    
+    def _get_type_counts_from_classifications(self, classifications: Dict, urls: List[str]) -> Dict[ContentType, int]:
+        """Count URLs by content type from classifications dict."""
+        type_counts = {content_type: 0 for content_type in ContentType}
+        
+        for url in urls:
+            if not self._is_excluded(url):
+                content_type = classifications.get(url, self.url_classifications.get(url, ContentType.CONTENT))
+                type_counts[content_type] += 1
+        
+        return type_counts
+    
+    def _get_primary_type(self, type_counts: Dict[ContentType, int]) -> ContentType:
+        """Get the primary content type based on counts."""
+        # Remove zero counts
+        non_zero_counts = {k: v for k, v in type_counts.items() if v > 0}
+        
+        if not non_zero_counts:
+            return ContentType.CONTENT
+        
+        # Priority order for determining primary type
+        priority_order = [ContentType.DOCUMENTATION, ContentType.CONTENT, ContentType.NAVIGATION, ContentType.TECHNICAL, ContentType.EXCLUDED]
+        
+        for content_type in priority_order:
+            if non_zero_counts.get(content_type, 0) > 0:
+                return content_type
+        
+        return ContentType.CONTENT
+    
+    def _get_type_icon(self, content_type: ContentType, has_children: bool) -> str:
+        """Get appropriate icon for content type."""
+        if content_type == ContentType.DOCUMENTATION:
+            return "📚" if has_children else "📖"
+        elif content_type == ContentType.CONTENT:
+            return "📁" if has_children else "📄"
+        elif content_type == ContentType.NAVIGATION:
+            return "🧭"
+        elif content_type == ContentType.TECHNICAL:
+            return "⚙️"
+        elif content_type == ContentType.EXCLUDED:
+            return "❌"
+        else:
+            return "📂" if has_children else "📄"
+    
+    def _format_type_summary(self, type_counts: Dict[ContentType, int], compact: bool = False) -> str:
+        """Format content type summary for display."""
+        non_zero_counts = {k: v for k, v in type_counts.items() if v > 0}
+        
+        if not non_zero_counts:
+            return ""
+        
+        if compact:
+            # Show only the most significant types
+            summary_parts = []
+            if non_zero_counts.get(ContentType.DOCUMENTATION, 0) > 0:
+                summary_parts.append(f"📖{non_zero_counts[ContentType.DOCUMENTATION]}")
+            if non_zero_counts.get(ContentType.CONTENT, 0) > 0:
+                summary_parts.append(f"📄{non_zero_counts[ContentType.CONTENT]}")
+            if non_zero_counts.get(ContentType.NAVIGATION, 0) > 0:
+                summary_parts.append(f"🧭{non_zero_counts[ContentType.NAVIGATION]}")
+            if non_zero_counts.get(ContentType.EXCLUDED, 0) > 0:
+                summary_parts.append(f"❌{non_zero_counts[ContentType.EXCLUDED]}")
+            
+            return f" [{', '.join(summary_parts)}]" if summary_parts else ""
+        else:
+            # Full summary
+            parts = []
+            for content_type in ContentType:
+                count = non_zero_counts.get(content_type, 0)
+                if count > 0:
+                    parts.append(f"{content_type.value}: {count}")
+            
+            return f" | {', '.join(parts)}" if parts else ""

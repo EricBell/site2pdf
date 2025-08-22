@@ -18,7 +18,7 @@ crawling:
   follow_external: false
   
   # Respect robots.txt
-  respect_robots: true
+  respect_robots: false
 
 # HTTP Settings
 http:
