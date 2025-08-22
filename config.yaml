@@ -1,0 +1,120 @@
+# Public Configuration - Safe to commit to version control
+
+# Crawling Settings
+crawling:
+  # Maximum crawl depth from base URL
+  max_depth: 5
+  
+  # Delay between requests (seconds)
+  request_delay: 2.0
+  
+  # Maximum number of pages to scrape
+  max_pages: 1000
+  
+  # Request timeout (seconds)
+  timeout: 30
+  
+  # Follow external links (cross-domain)
+  follow_external: false
+  
+  # Respect robots.txt
+  respect_robots: true
+
+# HTTP Settings
+http:
+  # User agent string
+  user_agent: "ScrapBloodhound/1.0 (+https://github.com/yourrepo/scrap-bloodhound)"
+  
+  # Maximum retries for failed requests
+  max_retries: 3
+  
+  # Retry delay (seconds)
+  retry_delay: 5
+  
+  # Enable/disable cookies
+  use_cookies: true
+
+# Content Processing
+content:
+  # Include images in PDF
+  include_images: true
+  
+  # Maximum image size to download (MB)
+  max_image_size: 10
+  
+  # Image formats to include
+  allowed_image_formats: ["jpg", "jpeg", "png", "gif", "webp"]
+  
+  # Extract and include page metadata
+  include_metadata: true
+  
+  # Minimum content length to include page (characters)
+  min_content_length: 100
+
+# PDF Generation
+pdf:
+  # Default output filename
+  output_filename: "scraped_website.pdf"
+  
+  # Page size (A4, Letter, etc.)
+  page_size: "A4"
+  
+  # Margins (mm)
+  margins:
+    top: 20
+    bottom: 20
+    left: 15
+    right: 15
+  
+  # Font settings
+  font:
+    family: "Arial"
+    size: 11
+    
+  # Include table of contents
+  include_toc: true
+  
+  # Include page numbers
+  include_page_numbers: true
+
+# Logging
+logging:
+  # Log level (DEBUG, INFO, WARNING, ERROR)
+  level: "INFO"
+  
+  # Log to file
+  log_to_file: true
+  
+  # Log filename
+  log_filename: "scraper.log"
+  
+  # Rotate logs
+  rotate_logs: true
+
+# Output Directories
+directories:
+  # Output directory for PDFs
+  output_dir: "output"
+  
+  # Temporary directory for images
+  temp_dir: "temp"
+  
+  # Logs directory
+  logs_dir: "logs"
+
+# URL Filtering
+filters:
+  # URL patterns to exclude (regex)
+  exclude_patterns:
+    - ".*\\.pdf$"
+    - ".*\\.zip$"
+    - ".*\\.exe$"
+    - "/admin/.*"
+    - "/login.*"
+    - "/logout.*"
+  
+  # File extensions to skip
+  skip_extensions: ["pdf", "zip", "exe", "dmg", "pkg"]
+  
+  # Maximum URL length
+  max_url_length: 2000

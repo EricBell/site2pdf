@@ -1,0 +1,33 @@
+{
+  "name": "scrap-bloodhound",
+  "version": "1.0.0",
+  "description": "A Python CLI application that scrapes websites and generates comprehensive PDF documents",
+  "main": "src/main.py",
+  "scripts": {
+    "test": "pytest",
+    "lint": "flake8 src/",
+    "format": "black src/",
+    "type-check": "mypy src/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/scrap-bloodhound.git"
+  },
+  "keywords": [
+    "web-scraping",
+    "pdf-generation",
+    "cli",
+    "python",
+    "crawler",
+    "documentation"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/yourusername/scrap-bloodhound/issues"
+  },
+  "homepage": "https://github.com/yourusername/scrap-bloodhound#readme",
+  "engines": {
+    "python": ">=3.8"
+  }
+}
