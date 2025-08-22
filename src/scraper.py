@@ -12,7 +12,7 @@ from .extractor import ContentExtractor
 
 
 class WebScraper:
-    def __init__(self, config: Dict[str, Any], dry_run: bool = False):
+    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None):
         self.config = config
         self.dry_run = dry_run
         self.session = requests.Session()
@@ -21,6 +21,7 @@ class WebScraper:
         self.base_domain = ""
         self.logger = logging.getLogger(__name__)
         self.extractor = ContentExtractor(config)
+        self.exclude_patterns = exclude_patterns or []
         
         # Configure session
         self.session.headers.update({
@@ -65,10 +66,16 @@ class WebScraper:
         if len(url) > self.config['filters']['max_url_length']:
             return False
             
-        # Check excluded patterns
+        # Check excluded patterns from config
         for pattern in self.config['filters']['exclude_patterns']:
             if re.search(pattern, url):
-                self.logger.debug(f"URL excluded by pattern {pattern}: {url}")
+                self.logger.debug(f"URL excluded by config pattern {pattern}: {url}")
+                return False
+        
+        # Check CLI exclude patterns
+        for pattern in self.exclude_patterns:
+            if re.search(pattern, url):
+                self.logger.debug(f"URL excluded by CLI pattern {pattern}: {url}")
                 return False
                 
         # Check file extensions
@@ -197,6 +204,45 @@ class WebScraper:
             depth += 1
             
         return sorted(list(discovered))
+
+    def scrape_approved_urls(self, approved_urls: Set[str]) -> List[Dict[str, Any]]:
+        """Scrape only the pre-approved URLs."""
+        if self.dry_run:
+            return []
+        
+        scraped_data = []
+        total_urls = len(approved_urls)
+        
+        self.logger.info(f"Starting to scrape {total_urls} approved URLs")
+        
+        # Progress bar setup
+        pbar = tqdm(total=total_urls, desc="Scraping approved URLs", unit="pages")
+        
+        try:
+            for url in approved_urls:
+                pbar.set_description(f"Scraping: {url[:50]}...")
+                
+                html = self._fetch_page(url)
+                if html:
+                    # Extract content
+                    content_data = self.extractor.extract_content(html, url)
+                    
+                    if content_data and len(content_data.get('text', '')) >= self.config['content']['min_content_length']:
+                        content_data['url'] = url
+                        scraped_data.append(content_data)
+                        self.logger.info(f"Scraped: {url}")
+                    else:
+                        self.logger.debug(f"Skipped (insufficient content): {url}")
+                
+                # Respect rate limiting
+                time.sleep(self.config['crawling']['request_delay'])
+                pbar.update(1)
+                
+        finally:
+            pbar.close()
+        
+        self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
+        return scraped_data
 
     def scrape_website(self, base_url: str) -> List[Dict[str, Any]]:
         """Scrape the entire website starting from base_url."""

@@ -17,6 +17,9 @@ Create a Python CLI application that scrapes a website and all its subpages, the
 - Progress reporting during scraping and PDF generation
 - Error reporting and logging
 - Configurable options (depth, output filename, etc.)
+- **Preview Mode**: Interactive URL discovery and approval before scraping
+- **URL Filtering**: Exclude specific URL patterns or paths
+- **Approval Persistence**: Save and reuse approved URL lists
 
 ### Content Processing
 - Preserve content structure and hierarchy
@@ -58,6 +61,7 @@ scrap-bloodhound/
 │   ├── scraper.py        # Web scraping logic
 │   ├── extractor.py      # Content extraction
 │   ├── pdf_generator.py  # PDF creation
+│   ├── preview.py        # URL preview and approval system
 │   └── utils.py          # Utility functions
 └── output/               # Generated PDFs and assets
 ```
@@ -83,11 +87,14 @@ scrap-bloodhound/
 ### Input
 - **Base URL**: Starting point for website crawling
 - **Configuration**: Optional settings via config files or CLI flags
+- **URL Patterns**: Optional exclude patterns for filtering unwanted content
+- **Approved URLs**: Optional pre-approved URL lists for targeted scraping
 
 ### Output
 - **PDF File**: Single document containing all scraped content
 - **Log Files**: Detailed crawling and processing logs
 - **Asset Directory**: Downloaded images and resources
+- **Approved URL Lists**: JSON files containing approved URLs for reuse
 
 ## Performance Requirements
 - Handle websites with hundreds of pages
@@ -108,3 +115,81 @@ scrap-bloodhound/
 - Advanced filtering and content selection
 - Parallel crawling capabilities
 - Custom CSS styling for PDF output
+
+## Usage Examples
+
+### Basic Usage
+```bash
+# Simple scraping
+python -m src.cli https://example.com
+
+# With custom output filename
+python -m src.cli https://example.com --output my-site.pdf
+
+# Dry run to see what would be scraped
+python -m src.cli https://example.com --dry-run
+```
+
+### Preview and Approval Mode
+```bash
+# Interactive preview with tree structure and approval
+python -m src.cli https://example.com --preview
+
+# Preview with pre-filtering patterns
+python -m src.cli https://example.com --preview --exclude "/admin" --exclude "/api"
+
+# Save approved URLs for future use
+python -m src.cli https://example.com --preview --save-approved approved_urls.json
+```
+
+### URL Filtering
+```bash
+# Exclude specific patterns
+python -m src.cli https://example.com --exclude "/login" --exclude "/search"
+
+# Exclude using regex patterns
+python -m src.cli https://example.com --exclude ".*\.(pdf|zip|exe)$"
+
+# Multiple exclude patterns
+python -m src.cli https://example.com --exclude "/admin" --exclude "/api" --exclude "/private"
+```
+
+### Reusing Approved Lists
+```bash
+# Load previously approved URLs
+python -m src.cli https://example.com --load-approved approved_urls.json
+
+# Combine with additional filtering
+python -m src.cli https://example.com --load-approved approved_urls.json --exclude "/temp"
+```
+
+### Advanced Options
+```bash
+# Full configuration with all options
+python -m src.cli https://example.com \
+  --preview \
+  --max-depth 3 \
+  --max-pages 100 \
+  --delay 2.0 \
+  --exclude "/admin" \
+  --exclude "/search" \
+  --save-approved my-site-approved.json \
+  --output my-site.pdf \
+  --verbose
+
+# Configuration file usage
+python -m src.cli https://example.com --config custom-config.yaml --preview
+```
+
+### Interactive Preview Workflow
+1. **Discovery**: URLs are discovered and organized in a tree structure
+2. **Preview**: Navigate through the hierarchical display of URLs
+3. **Exclusion**: Use interactive commands to exclude unwanted paths:
+   - `e <number>` - Exclude a path and all subpaths
+   - `i <number>` - Include previously excluded path
+   - `r` - Refresh the display
+   - `s` - Show currently excluded URLs
+   - `c` - Continue to final approval
+   - `q` - Quit without scraping
+4. **Approval**: Review final summary and confirm scraping
+5. **Scraping**: Only approved URLs are scraped and processed
