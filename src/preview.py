@@ -87,20 +87,38 @@ class URLPreview:
             children_items = self._display_children(domain_data['children'], indent + 1, parent_path + domain + "/", domain_data.get('classifications', {}))
             items.extend(children_items)
         
-        # Now display all child items with correct sequential numbering
-        self._display_numbered_items([item for item in items if len(item) > 3])
+        # All items that will be numbered and selectable
+        # (Exclude only the domain header, not domain items themselves)
+        selectable_items = []
+        numbered_display_items = []
         
-        # Return simplified items for selection (backward compatibility)
-        return [(item[0], item[1], item[2]) for item in items]
+        for item in items:
+            if len(item) == 3:  # Simple domain or path item (not display-enhanced)
+                # Only number items that aren't the main domain header
+                if item[2] > 0:  # indent > 0 means it's not the root domain header
+                    selectable_items.append(item)
+                    numbered_display_items.append(item)
+            elif len(item) > 3:  # Display-enhanced item from _display_children
+                selectable_items.append((item[0], item[1], item[2]))  # Convert to simple format
+                numbered_display_items.append(item)
+        
+        # Display all selectable items with correct sequential numbering
+        self._display_numbered_items(numbered_display_items)
+        
+        # Return items that correspond exactly to the displayed numbers
+        return selectable_items
     
     def _display_numbered_items(self, items_with_display_info):
         """Display items with proper sequential numbering."""
         number = 1
         for item in items_with_display_info:
-            if len(item) >= 7:  # Ensure it has display info
+            if len(item) >= 7:  # Display-enhanced item
                 name, current_path, indent, icon, url_count, type_summary, status = item[:7]
                 click.echo(f"{'  ' * indent}{number:2d}. {icon} {name} ({url_count} pages{type_summary}{status})")
-                number += 1
+            elif len(item) == 3:  # Simple item (shouldn't normally happen here now, but handle it)
+                name, current_path, indent = item
+                click.echo(f"{'  ' * indent}{number:2d}. 📁 {name}")
+            number += 1
     
     def _display_children(self, children: Dict, indent: int, parent_path: str, parent_classifications: Dict = None) -> List[Tuple[str, str, int]]:
         """Recursively display child nodes with content classification."""
@@ -191,7 +209,7 @@ class URLPreview:
                             click.echo("=" * 50)
                             items = self.display_tree(tree)
                         else:
-                            click.echo(f"❌ Invalid number. Please enter 1-{len(items)}")
+                            click.echo(f"❌ Invalid number. Please enter 1-{len(items)} (you entered {num})")
                     except (ValueError, IndexError):
                         click.echo("❌ Invalid format. Use: e <number>")
                 elif choice.startswith('i '):
