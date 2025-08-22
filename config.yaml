@@ -23,7 +23,7 @@ crawling:
 # HTTP Settings
 http:
   # User agent string
-  user_agent: "ScrapBloodhound/1.0 (+https://github.com/yourrepo/scrap-bloodhound)"
+  user_agent: "site2pdf/1.0 (+https://github.com/yourusername/site2pdf)"
   
   # Maximum retries for failed requests
   max_retries: 3
@@ -118,3 +118,65 @@ filters:
   
   # Maximum URL length
   max_url_length: 2000
+
+# Human-Like Behavior Simulation
+human_behavior:
+  # Delay Settings (seconds)
+  delays:
+    # Base time to "read" page content [min, max]
+    base_reading_time: [2, 8]
+    
+    # Time to "decide" what to click next [min, max]  
+    navigation_decision: [1, 3]
+    
+    # Random variance in delays (± percentage)
+    variance_percent: 30
+    
+    # Multiplier for content-heavy pages
+    complexity_multiplier: 1.5
+    
+    # Gradual slowdown factor (fatigue simulation)
+    fatigue_factor: 0.1
+    
+    # Absolute minimum delay (safety)
+    minimum_delay: 0.8
+    
+    # Maximum delay (practicality)
+    maximum_delay: 30
+  
+  # Browsing Behavior
+  browsing:
+    # Respect business hours (slower outside 9-5)
+    respect_business_hours: false
+    
+    # Weekend browsing factor (1.2 = 20% slower)
+    weekend_factor: 1.2
+    
+    # Maximum pages per session before long break
+    max_session_pages: 100
+    
+    # Take breaks every N pages
+    session_break_after: 50
+    
+    # Session break duration [min, max] seconds
+    session_break_duration: [30, 120]
+    
+    # Probability of respecting robots.txt (0.8 = 80%)
+    robots_respect_probability: 0.8
+  
+  # Anti-Detection Features
+  detection_avoidance:
+    # Enable realistic browser headers
+    realistic_headers: true
+    
+    # Enable cookie handling
+    handle_cookies: true
+    
+    # Enable referrer tracking
+    track_referrers: true
+    
+    # Monitor for rate limiting
+    monitor_rate_limits: true
+    
+    # Automatic slowdown when detected
+    adaptive_delays: true

@@ -52,7 +52,7 @@ class PDFGenerator:
                 <h1 class="cover-title">Website Documentation</h1>
                 <h2 class="cover-url">{base_url}</h2>
                 <p class="cover-date">Generated on {timestamp}</p>
-                <p class="cover-generator">Created with ScrapBloodhound</p>
+                <p class="cover-generator">Created with site2pdf</p>
             </div>
             <div class="page-break"></div>
         """

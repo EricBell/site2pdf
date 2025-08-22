@@ -48,7 +48,7 @@ Create a Python CLI application that scrapes a website and all its subpages, the
 ### Project Structure
 ```
 
-scrap-bloodhound/
+site2pdf/
 ├── requirements.md          # This file
 ├── .env                    # Private configuration
 ├── config.yaml             # Public configuration

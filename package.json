@@ -1,5 +1,5 @@
 {
-  "name": "scrap-bloodhound",
+  "name": "site2pdf",
   "version": "1.0.0",
   "description": "A Python CLI application that scrapes websites and generates comprehensive PDF documents",
   "main": "src/main.py",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/scrap-bloodhound.git"
+    "url": "git+https://github.com/yourusername/site2pdf.git"
   },
   "keywords": [
     "web-scraping",
@@ -24,9 +24,9 @@
   "author": "Your Name <your.email@example.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/yourusername/scrap-bloodhound/issues"
+    "url": "https://github.com/yourusername/site2pdf/issues"
   },
-  "homepage": "https://github.com/yourusername/scrap-bloodhound#readme",
+  "homepage": "https://github.com/yourusername/site2pdf#readme",
   "engines": {
     "python": ">=3.8"
   }

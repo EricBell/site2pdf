@@ -1,6 +1,6 @@
-# ScrapBloodhound 🐕
+# site2pdf 📄
 
-A powerful Python CLI application that scrapes websites and generates comprehensive PDF documents with all content and images.
+A powerful Python CLI application that intelligently scrapes websites and generates comprehensive PDF documents with human-like behavior.
 
 ## Features
 
@@ -19,7 +19,7 @@ A powerful Python CLI application that scrapes websites and generates comprehens
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd scrap-bloodhound
+cd site2pdf
 ```
 
 2. Create a virtual environment:
@@ -95,7 +95,7 @@ DEBUG_MODE=true
 ## Project Structure
 
 ```
-scrap-bloodhound/
+site2pdf/
 ├── requirements.md          # Detailed requirements
 ├── .env                    # Private configuration
 ├── config.yaml             # Public configuration

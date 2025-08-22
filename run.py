@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ScrapBloodhound - Website to PDF Scraper
+site2pdf - Website to PDF Scraper
 Convenient entry point script in project root.
 """
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ScrapBloodhound - Website to PDF Scraper
+site2pdf - Website to PDF Scraper
 Main entry point for the application.
 """
 

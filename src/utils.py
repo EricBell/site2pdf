@@ -42,7 +42,7 @@ def get_default_config() -> Dict[str, Any]:
             'respect_robots': True
         },
         'http': {
-            'user_agent': 'ScrapBloodhound/1.0 (+https://github.com/yourrepo/scrap-bloodhound)',
+            'user_agent': 'site2pdf/1.0 (+https://github.com/yourusername/site2pdf)',
             'max_retries': 3,
             'retry_delay': 5,
             'use_cookies': True

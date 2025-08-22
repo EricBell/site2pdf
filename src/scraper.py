@@ -11,6 +11,10 @@ import re
 from .extractor import ContentExtractor
 from .content_classifier import ContentClassifier, ContentType
 from .progress_tracker import ProgressTracker, Phase
+try:
+    from .human_behavior import HumanBehaviorSimulator
+except ImportError:
+    from human_behavior import HumanBehaviorSimulator
 
 
 class WebScraper:
@@ -27,17 +31,28 @@ class WebScraper:
         self.extractor = ContentExtractor(config)
         self.classifier = ContentClassifier()
         self.progress = ProgressTracker(verbose=verbose)
+        self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
         self.exclude_patterns = exclude_patterns or []
         
-        # Configure session
-        self.session.headers.update({
-            'User-Agent': config['http']['user_agent'],
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        })
+        # Configure session with human-like headers
+        if self.human_behavior and config.get('human_behavior', {}).get('detection_avoidance', {}).get('realistic_headers', True):
+            # Use realistic Microsoft Edge headers
+            self.session.headers.update(self.human_behavior.get_realistic_headers())
+        else:
+            # Fallback to original headers
+            self.session.headers.update({
+                'User-Agent': config['http']['user_agent'],
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            })
+        
+        # Enable cookies if human behavior is enabled
+        if self.human_behavior and config.get('human_behavior', {}).get('detection_avoidance', {}).get('handle_cookies', True):
+            # Session already handles cookies by default, but ensure it's enabled
+            pass
         
         # Configure retries
         from requests.adapters import HTTPAdapter
@@ -100,6 +115,11 @@ class WebScraper:
 
     def _check_robots_txt(self, base_url: str) -> bool:
         """Check robots.txt compliance."""
+        # Human behavior: sometimes ignore robots.txt
+        if self.human_behavior and not self.human_behavior.should_respect_robots_txt():
+            self.logger.debug("Ignoring robots.txt (simulating human behavior)")
+            return True
+            
         if not self.config['crawling']['respect_robots']:
             return True
             
@@ -110,6 +130,11 @@ class WebScraper:
             rp.read()
             
             user_agent = self.config['http']['user_agent']
+            if self.human_behavior:
+                # Use the realistic user agent for robots.txt check
+                headers = self.human_behavior.get_realistic_headers()
+                user_agent = headers.get('User-Agent', user_agent)
+                
             can_fetch = rp.can_fetch(user_agent, base_url)
             
             if not can_fetch:
@@ -151,12 +176,22 @@ class WebScraper:
         try:
             self.logger.debug(f"Fetching: {url}")
             
+            # Update headers with referrer if human behavior is enabled
+            headers = {}
+            if self.human_behavior and self.config.get('human_behavior', {}).get('detection_avoidance', {}).get('track_referrers', True):
+                headers = self.human_behavior.get_realistic_headers()
+            
             response = self.session.get(
                 url, 
                 timeout=self.config['crawling']['timeout'],
-                allow_redirects=True
+                allow_redirects=True,
+                headers=headers if headers else None
             )
             response.raise_for_status()
+            
+            # Update human behavior session state
+            if self.human_behavior:
+                self.human_behavior.update_session_state(url, response)
             
             # Check content type
             content_type = response.headers.get('content-type', '').lower()
@@ -204,8 +239,13 @@ class WebScraper:
                         else:
                             break
                             
-                # Respect rate limiting
-                time.sleep(self.config['crawling']['request_delay'])
+                # Human-like delay between requests
+                if self.human_behavior:
+                    content_type = self.url_classifications.get(url, ContentType.CONTENT)
+                    content_data = None  # Could enhance to pass actual content data
+                    self.human_behavior.simulate_human_delay(url, content_type, content_data)
+                else:
+                    time.sleep(self.config['crawling']['request_delay'])
                 
             depth += 1
             
@@ -240,8 +280,13 @@ class WebScraper:
                     else:
                         self.logger.debug(f"Skipped (insufficient content): {url}")
                 
-                # Respect rate limiting
-                time.sleep(self.config['crawling']['request_delay'])
+                # Human-like delay between requests
+                if self.human_behavior:
+                    content_type = self.url_classifications.get(url, ContentType.CONTENT)
+                    content_data = None  # Could enhance to pass actual content data
+                    self.human_behavior.simulate_human_delay(url, content_type, content_data)
+                else:
+                    time.sleep(self.config['crawling']['request_delay'])
                 pbar.update(1)
                 
         finally:

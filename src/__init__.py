@@ -1,5 +1,5 @@
 """
-ScrapBloodhound - Website to PDF Scraper
+site2pdf - Website to PDF Scraper
 """
 
 __version__ = "1.0.0"
