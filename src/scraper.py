@@ -233,6 +233,10 @@ class WebScraper:
         discovered = set(to_visit)
         classifications = {}
         depth = 0
+        last_progress_time = time.time()
+        
+        if self.verbose:
+            self.logger.info("Starting URL discovery...")
         
         while (to_visit and 
                depth < self.config['crawling']['max_depth'] and
@@ -244,6 +248,15 @@ class WebScraper:
             for url in current_level:
                 if len(discovered) >= self.config['crawling']['max_pages']:
                     break
+                
+                # Progress notification every 10 seconds
+                current_time = time.time()
+                if current_time - last_progress_time > 10:
+                    if self.verbose:
+                        self.logger.info(f"Discovery progress: {len(discovered)} URLs found, depth {depth}")
+                    else:
+                        print(f"🔍 Discovering... {len(discovered)} URLs found (depth {depth})")
+                    last_progress_time = current_time
                     
                 html = self._fetch_page(url)
                 if html:
@@ -272,6 +285,11 @@ class WebScraper:
                     time.sleep(self.config['crawling']['request_delay'])
                 
             depth += 1
+        
+        if self.verbose:
+            self.logger.info(f"URL discovery completed: {len(discovered)} URLs found")
+        else:
+            print(f"✅ Discovery complete: {len(discovered)} URLs found")
             
         discovered_list = sorted(list(discovered))
         return discovered_list, classifications

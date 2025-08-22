@@ -83,11 +83,24 @@ class URLPreview:
                     click.echo(f"{'  ' * indent}🌐 {domain} ({len(domain_urls)} pages{type_summary})")
                     items.append((domain, parent_path + domain, indent))
             
-            # Process children
+            # Process children (they now store display info but don't display yet)
             children_items = self._display_children(domain_data['children'], indent + 1, parent_path + domain + "/", domain_data.get('classifications', {}))
             items.extend(children_items)
         
-        return items
+        # Now display all child items with correct sequential numbering
+        self._display_numbered_items([item for item in items if len(item) > 3])
+        
+        # Return simplified items for selection (backward compatibility)
+        return [(item[0], item[1], item[2]) for item in items]
+    
+    def _display_numbered_items(self, items_with_display_info):
+        """Display items with proper sequential numbering."""
+        number = 1
+        for item in items_with_display_info:
+            if len(item) >= 7:  # Ensure it has display info
+                name, current_path, indent, icon, url_count, type_summary, status = item[:7]
+                click.echo(f"{'  ' * indent}{number:2d}. {icon} {name} ({url_count} pages{type_summary}{status})")
+                number += 1
     
     def _display_children(self, children: Dict, indent: int, parent_path: str, parent_classifications: Dict = None) -> List[Tuple[str, str, int]]:
         """Recursively display child nodes with content classification."""
@@ -112,8 +125,8 @@ class URLPreview:
                 excluded_count = len([url for url in node_data['urls'] if self._is_excluded(url)])
                 status = f" [{excluded_count} excluded]" if excluded_count else ""
                 
-                click.echo(f"{'  ' * indent}{len(items)+1:2d}. {icon} {name} ({len(node_urls)} pages{type_summary}{status})")
-                items.append((name, current_path, indent))
+                # Don't display here - will be displayed with correct numbering later
+                items.append((name, current_path, indent, icon, len(node_urls), type_summary, status))
                 
                 # Recursively display children
                 if node_data['children']:
