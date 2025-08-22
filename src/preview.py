@@ -6,17 +6,22 @@ from typing import List, Set, Dict, Optional, Tuple
 from urllib.parse import urlparse, unquote
 import click
 from .content_classifier import ContentClassifier, ContentType
+try:
+    from .path_scoping import PathScopeManager
+except ImportError:
+    from path_scoping import PathScopeManager
 
 
 class URLPreview:
     """Handle URL discovery, preview, and interactive approval with content classification."""
     
-    def __init__(self, exclude_patterns: List[str] = None):
+    def __init__(self, exclude_patterns: List[str] = None, path_scope: Optional[PathScopeManager] = None):
         self.exclude_patterns = exclude_patterns or []
         self.excluded_urls: Set[str] = set()
         self.approved_urls: Set[str] = set()
         self.classifier = ContentClassifier()
         self.url_classifications: Dict[str, ContentType] = {}
+        self.path_scope = path_scope
         
     def build_url_tree(self, urls: List[str], classifications: Dict[str, ContentType] = None) -> Dict[str, any]:
         """Build a hierarchical tree structure from URLs with classification."""
@@ -126,6 +131,10 @@ class URLPreview:
         """Interactive exclusion of URL paths."""
         click.echo("\n🔍 URL Structure Preview:")
         click.echo("=" * 50)
+        
+        # Show path scoping information if available
+        if self.path_scope:
+            self._display_scope_info()
         
         # Display initial tree
         items = self.display_tree(tree)
@@ -397,3 +406,20 @@ class URLPreview:
                     parts.append(f"{content_type.value}: {count}")
             
             return f" | {', '.join(parts)}" if parts else ""
+    
+    def _display_scope_info(self):
+        """Display path scoping information."""
+        scope_summary = self.path_scope.get_scope_summary()
+        
+        if scope_summary['enabled']:
+            click.echo(f"🎯 Path Scoping: Enabled")
+            click.echo(f"   📂 Starting path: {scope_summary['starting_path']}")
+            click.echo(f"   ✅ Allowed paths: {', '.join(scope_summary['allowed_paths'])}")
+            click.echo(f"   🧭 Navigation policy: {scope_summary['navigation_policy']}")
+            if scope_summary['allow_siblings']:
+                click.echo(f"   👥 Sibling paths: Allowed")
+            click.echo(f"   📊 URLs outside scope will be filtered automatically")
+        else:
+            click.echo(f"🎯 Path Scoping: Disabled (all paths allowed)")
+        
+        click.echo()

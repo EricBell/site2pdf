@@ -13,8 +13,10 @@ from .content_classifier import ContentClassifier, ContentType
 from .progress_tracker import ProgressTracker, Phase
 try:
     from .human_behavior import HumanBehaviorSimulator
+    from .path_scoping import PathScopeManager
 except ImportError:
     from human_behavior import HumanBehaviorSimulator
+    from path_scoping import PathScopeManager
 
 
 class WebScraper:
@@ -33,6 +35,7 @@ class WebScraper:
         self.progress = ProgressTracker(verbose=verbose)
         self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
         self.exclude_patterns = exclude_patterns or []
+        self.path_scope: Optional[PathScopeManager] = None  # Initialized when we know the starting URL
         
         # Configure session with human-like headers
         if self.human_behavior and config.get('human_behavior', {}).get('detection_avoidance', {}).get('realistic_headers', True):
@@ -81,7 +84,7 @@ class WebScraper:
         ))
         return normalized
 
-    def _is_valid_url(self, url: str) -> bool:
+    def _is_valid_url(self, url: str, is_navigation: bool = False, current_depth: int = 0) -> bool:
         """Check if URL should be crawled based on filters."""
         # Check URL length
         if len(url) > self.config['filters']['max_url_length']:
@@ -105,6 +108,13 @@ class WebScraper:
         for ext in self.config['filters']['skip_extensions']:
             if path.endswith(f'.{ext}'):
                 self.logger.debug(f"URL excluded by extension .{ext}: {url}")
+                return False
+        
+        # Check path scoping
+        if self.path_scope:
+            allowed, reason = self.path_scope.is_url_in_scope(url, is_navigation, current_depth)
+            if not allowed:
+                self.logger.debug(f"URL excluded by path scoping: {url} - {reason}")
                 return False
                 
         return True
@@ -163,7 +173,7 @@ class WebScraper:
                     
                     # Check if it's a valid URL to crawl
                     if (self._is_same_domain(normalized_url) and 
-                        self._is_valid_url(normalized_url)):
+                        self._is_valid_url(normalized_url, is_navigation=False, current_depth=0)):
                         links.add(normalized_url)
                         
         except Exception as e:
@@ -208,6 +218,13 @@ class WebScraper:
     def discover_urls(self, base_url: str) -> List[str]:
         """Discover all URLs to be scraped (for dry-run mode)."""
         self.base_domain = urlparse(base_url).netloc
+        
+        # Initialize path scoping
+        if not self.path_scope:
+            self.path_scope = PathScopeManager(self.config, base_url)
+            if self.verbose:
+                scope_summary = self.path_scope.get_scope_summary()
+                self.logger.info(f"Path scoping enabled: {scope_summary}")
         
         if not self._check_robots_txt(base_url):
             return []
@@ -301,6 +318,13 @@ class WebScraper:
             return []
             
         self.base_domain = urlparse(base_url).netloc
+        
+        # Initialize path scoping
+        if not self.path_scope:
+            self.path_scope = PathScopeManager(self.config, base_url)
+            if self.verbose:
+                scope_summary = self.path_scope.get_scope_summary()
+                self.logger.info(f"Path scoping enabled: {scope_summary}")
         
         if not self._check_robots_txt(base_url):
             self.logger.error("Robots.txt disallows crawling this site")

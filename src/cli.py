@@ -115,11 +115,12 @@ def scrape(base_url: str,
         
         # Handle preview mode with interactive approval
         if preview or load_approved:
-            url_preview = URLPreview(exclude_patterns)
             approved_urls = set()
             
             if load_approved:
-                approved_urls = url_preview.load_approved_urls(load_approved)
+                # Create temporary preview to load URLs
+                temp_preview = URLPreview(exclude_patterns)
+                approved_urls = temp_preview.load_approved_urls(load_approved)
                 if not approved_urls:
                     click.echo("No approved URLs loaded. Switching to discovery mode.")
                     preview = True
@@ -129,6 +130,9 @@ def scrape(base_url: str,
                 scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
                 try:
                     discovered_urls, classifications = scraper.discover_urls(base_url)
+                    
+                    # Create preview with path scope information
+                    url_preview = URLPreview(exclude_patterns, scraper.path_scope)
                     
                     if not discovered_urls:
                         click.echo("❌ No URLs discovered. Check the URL and try again.")

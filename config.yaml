@@ -180,3 +180,24 @@ human_behavior:
     
     # Automatic slowdown when detected
     adaptive_delays: true
+
+# Path-Based URL Scoping
+path_scoping:
+  # Enable intelligent path-based URL limiting
+  enabled: true
+  
+  # Allow parent levels above starting path (1 = immediate parent)
+  allow_parent_levels: 1
+  
+  # Always allow homepage even if outside scope
+  allow_homepage: true
+  
+  # Navigation link handling: strict/limited/none
+  # strict: only within scope, limited: allow but don't crawl deep, none: block all
+  allow_navigation: "limited"
+  
+  # Maximum depth to crawl outside primary scope (for navigation)
+  max_external_depth: 1
+  
+  # Allow sibling paths at same level (e.g. /docs/api/ and /docs/guides/)
+  allow_siblings: true

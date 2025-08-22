@@ -109,12 +109,38 @@ site2pdf/
 - Avoid overwhelming target servers
 - Handle HTTP status codes properly (429, 403, etc.)
 
+## Implemented Advanced Features
+
+### Path-Aware URL Scoping
+- **Intelligent path boundaries**: Automatically limits crawling to relevant sections
+- **Configurable scope rules**: Parent levels, siblings, navigation policies
+- **Homepage allowance**: Optional inclusion of root page even outside scope
+- **Smart filtering**: Blocks admin pages, APIs, technical files automatically
+
+### Human-Like Browsing Simulation  
+- **Microsoft Edge emulation**: Realistic browser headers and user agents
+- **Variable timing**: Human-like reading (2-8s) and decision delays (1-3s)
+- **Behavioral patterns**: Fatigue simulation, session breaks, adaptive delays
+- **Anti-detection**: Rate limit monitoring, cookie handling, referrer tracking
+
+### Content Classification & Quality Assessment
+- **Automatic categorization**: Documentation, content, navigation, technical
+- **Quality scoring**: Word count, structure, heading analysis
+- **Priority-based crawling**: Focus on high-value documentation content
+- **Low-quality filtering**: Skip sparse or navigation-heavy pages
+
+### Interactive Preview System
+- **Tree-view interface**: Hierarchical URL display with content types
+- **Approval workflow**: Interactive exclude/include commands
+- **URL list persistence**: Save and reuse approved URL sets
+- **Scope visualization**: Shows path boundaries and filtering rules
+
 ## Future Enhancements
 - Support for JavaScript-rendered content
 - Multiple output formats (HTML, EPUB, etc.)
-- Advanced filtering and content selection
 - Parallel crawling capabilities
 - Custom CSS styling for PDF output
+- AI-powered content relevance scoring
 
 ## Usage Examples
 

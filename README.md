@@ -4,13 +4,29 @@ A powerful Python CLI application that intelligently scrapes websites and genera
 
 ## Features
 
-- 🌐 **Complete Website Scraping**: Crawls all internal links starting from a base URL
-- 📄 **PDF Generation**: Creates a single, well-formatted PDF with all content
-- 🖼️ **Image Handling**: Downloads and embeds images into the PDF
-- ⚙️ **Configurable**: Extensive configuration options via YAML and environment variables
-- 🤖 **Respectful Crawling**: Respects robots.txt, implements rate limiting
-- 📊 **Progress Tracking**: Real-time progress reporting and comprehensive logging
-- 🎯 **Content Filtering**: Smart filtering to avoid unwanted content
+### 🧠 **Intelligent Scraping**
+- 🎯 **Path-Aware Discovery**: Stays focused on relevant sections (e.g., `/docs/*` only)
+- 🏷️ **Content Classification**: Distinguishes documentation, content, navigation, and technical pages
+- 🔍 **Smart URL Filtering**: Automatically excludes admin pages, APIs, and irrelevant content
+- 📊 **Quality Assessment**: Analyzes page content quality and skips low-value pages
+
+### 🕵️ **Human-Like Behavior** 
+- 🎭 **Microsoft Edge Simulation**: Realistic browser headers and user agent
+- ⏱️ **Variable Delays**: Human-like reading and decision times (2-8s per page)
+- 🍪 **Session Management**: Proper cookie handling and referrer tracking
+- 📈 **Adaptive Behavior**: Detects rate limiting and adjusts automatically
+- 😴 **Fatigue Simulation**: Gradually slower over time like real users
+
+### 📄 **Advanced PDF Generation**
+- 📖 **Documentation Focus**: Prioritizes user-facing content over technical files
+- 🖼️ **Image Embedding**: Downloads and includes images with proper formatting
+- 📚 **Table of Contents**: Automatic TOC generation with page links
+- 🎨 **Professional Layout**: Clean, readable formatting with proper structure
+
+### 🔧 **Powerful Configuration**
+- 🎮 **Interactive Preview**: Tree-view URL selection with approval system
+- 💾 **URL List Persistence**: Save and reuse approved URL lists
+- ⚙️ **Extensive Options**: Fine-tune crawling, delays, content filtering, and output
 
 ## Quick Start
 
@@ -56,6 +72,10 @@ python run.py https://example.com --dry-run
 - `--config, -c`: Configuration file path
 - `--verbose, -v`: Enable verbose logging
 - `--dry-run`: Show what would be scraped without doing it
+- `--preview`: Interactive URL selection with tree view
+- `--exclude`: URL patterns to exclude (can use multiple times)
+- `--save-approved`: Save approved URLs to file for reuse
+- `--load-approved`: Load previously approved URLs from file
 
 ## Configuration
 
@@ -133,6 +153,99 @@ python run.py https://example.com --config custom-config.yaml --output custom-na
 ```bash
 python run.py https://example.com --verbose --delay 3
 ```
+
+## Advanced Features
+
+### 🎮 Interactive Preview Mode
+Preview and approve URLs before scraping with a tree-view interface:
+
+```bash
+# Interactive preview with approval
+python run.py https://example.com/docs/ --preview
+
+# Preview with URL filtering
+python run.py https://example.com --preview --exclude "/admin" --exclude "/api"
+
+# Save approved URLs for reuse
+python run.py https://example.com --preview --save-approved approved_urls.json
+```
+
+**Preview Features:**
+- 📊 Content type indicators (📖 Documentation, 📄 Content, 🧭 Navigation)
+- 🎯 Path scoping information showing allowed/blocked sections  
+- 🌳 Hierarchical tree view of discovered URLs
+- ✅ Interactive approval with exclude/include commands
+- 💾 Save/load approved URL lists for repeated scraping
+
+### 🎯 Path-Aware Scoping
+Automatically stays within relevant sections of websites:
+
+```bash
+# Starting from documentation section
+python run.py https://example.com/docs/getting-started/
+
+# Will scrape:
+# ✅ /docs/api-reference/     (same section)
+# ✅ /docs/                   (parent section) 
+# ✅ /                        (homepage)
+
+# Will ignore:
+# ❌ /blog/                   (different section)
+# ❌ /admin/                  (admin area)
+# ❌ /xmlrpc.php             (technical file)
+```
+
+**Configuration:**
+```yaml
+path_scoping:
+  enabled: true                    # Enable path-based scoping
+  allow_parent_levels: 1           # Allow 1 level up from starting path
+  allow_homepage: true             # Always allow homepage
+  allow_siblings: true             # Allow sibling paths in same section
+  allow_navigation: "limited"      # Navigation link policy
+```
+
+### 🕵️ Human-Like Behavior
+Mimics real user browsing patterns to avoid detection:
+
+```bash
+# Enable human-like delays and behavior
+python run.py https://example.com --verbose
+```
+
+**Behavioral Features:**
+- 🎭 **Microsoft Edge simulation** with realistic headers
+- ⏱️ **Variable delays**: 2-8 seconds reading + 1-3 seconds decision time
+- 📈 **Adaptive timing**: Slower for complex pages, faster for simple ones
+- 😴 **Fatigue simulation**: Gradually slower over long sessions
+- 🍪 **Session management**: Proper cookies and referrer tracking
+- 📊 **Rate limit detection**: Automatically backs off when detected
+
+**Configuration:**
+```yaml
+human_behavior:
+  delays:
+    base_reading_time: [2, 8]      # Time to "read" page content
+    navigation_decision: [1, 3]    # Time to "decide" next action
+    variance_percent: 30           # Random timing variation
+  browsing:
+    session_break_after: 50        # Break every N pages
+    weekend_factor: 1.2            # 20% slower on weekends
+```
+
+### 🔍 Smart Content Classification
+Automatically identifies and prioritizes different types of content:
+
+- 📖 **Documentation**: `/docs/`, `/help/`, `/guide/`, `/tutorial/`
+- 📄 **Content Pages**: `/about/`, `/blog/`, `/features/`, `/examples/`
+- 🧭 **Navigation**: Homepage, sitemaps, main navigation
+- ❌ **Excluded**: Admin pages, APIs, technical files, login forms
+
+**Quality Assessment:**
+- Word count and content depth analysis
+- Heading structure evaluation  
+- Image and multimedia content detection
+- Low-quality page filtering (too sparse or too navigation-heavy)
 
 ## Output
 
