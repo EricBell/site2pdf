@@ -23,7 +23,8 @@ crawling:
 # HTTP Settings
 http:
   # User agent string
-  user_agent: "site2pdf/1.0 (+https://github.com/yourusername/site2pdf)"
+  # user_agent: "site2pdf/1.0 (+https://github.com/yourusername/site2pdf)"
+  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0
   
   # Maximum retries for failed requests
   max_retries: 3
