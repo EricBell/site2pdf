@@ -215,7 +215,7 @@ class WebScraper:
             self.logger.error(f"Failed to fetch {url}: {e}")
             return None
 
-    def discover_urls(self, base_url: str) -> List[str]:
+    def discover_urls(self, base_url: str) -> Tuple[List[str], Dict[str, 'ContentType']]:
         """Discover all URLs to be scraped (for dry-run mode)."""
         self.base_domain = urlparse(base_url).netloc
         
@@ -227,10 +227,11 @@ class WebScraper:
                 self.logger.info(f"Path scoping enabled: {scope_summary}")
         
         if not self._check_robots_txt(base_url):
-            return []
+            return [], {}
             
         to_visit = [self._normalize_url(base_url)]
         discovered = set(to_visit)
+        classifications = {}
         depth = 0
         
         while (to_visit and 
@@ -246,6 +247,10 @@ class WebScraper:
                     
                 html = self._fetch_page(url)
                 if html:
+                    # Classify the current URL
+                    if url not in classifications:
+                        classifications[url] = self.classifier.classify_url(url)
+                    
                     links = self._extract_links(html, url)
                     new_links = links - discovered
                     
@@ -253,12 +258,14 @@ class WebScraper:
                         if len(discovered) < self.config['crawling']['max_pages']:
                             discovered.add(link)
                             to_visit.append(link)
+                            # Pre-classify new URLs (without HTML for now)
+                            classifications[link] = self.classifier.classify_url(link)
                         else:
                             break
                             
                 # Human-like delay between requests
                 if self.human_behavior:
-                    content_type = self.url_classifications.get(url, ContentType.CONTENT)
+                    content_type = classifications.get(url, ContentType.CONTENT)
                     content_data = None  # Could enhance to pass actual content data
                     self.human_behavior.simulate_human_delay(url, content_type, content_data)
                 else:
@@ -266,7 +273,8 @@ class WebScraper:
                 
             depth += 1
             
-        return sorted(list(discovered))
+        discovered_list = sorted(list(discovered))
+        return discovered_list, classifications
 
     def scrape_approved_urls(self, approved_urls: Set[str]) -> List[Dict[str, Any]]:
         """Scrape only the pre-approved URLs."""
