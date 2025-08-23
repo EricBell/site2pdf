@@ -281,6 +281,40 @@ class ContentExtractor:
             for element in soup.select(selector):
                 element.decompose()
 
+    def _process_html_content_with_images(self, soup: BeautifulSoup, url: str) -> str:
+        """Process HTML content while preserving image positions and downloading images."""
+        # Find and process all images in the HTML
+        for img_tag in soup.find_all('img'):
+            src = img_tag.get('src')
+            if src:
+                # Download the image
+                local_path = self._download_image(src, url)
+                if local_path and os.path.exists(local_path):
+                    # Convert to data URL for embedding
+                    with open(local_path, 'rb') as f:
+                        import base64
+                        img_data_b64 = base64.b64encode(f.read()).decode()
+                        
+                    ext = local_path.split('.')[-1].lower()
+                    mime_type = {
+                        'jpg': 'image/jpeg',
+                        'jpeg': 'image/jpeg', 
+                        'png': 'image/png',
+                        'gif': 'image/gif',
+                        'webp': 'image/webp'
+                    }.get(ext, 'image/jpeg')
+                    
+                    data_url = f"data:{mime_type};base64,{img_data_b64}"
+                    
+                    # Update the img tag with the data URL and add styling
+                    img_tag['src'] = data_url
+                    img_tag['style'] = 'max-width: 100%; height: auto; display: inline-block; margin: 10px 0;'
+                else:
+                    # Remove broken image tags
+                    img_tag.decompose()
+        
+        return str(soup)
+
     def extract_content(self, html: str, url: str) -> Optional[Dict[str, Any]]:
         """Extract all content from HTML page."""
         try:
@@ -302,7 +336,10 @@ class ContentExtractor:
                 soup
             )
             
-            # Extract text
+            # Process HTML content with inline images (NEW)
+            html_content_with_images = self._process_html_content_with_images(main_content, url)
+            
+            # Extract text (for backward compatibility)
             text_content = self._clean_text(main_content.get_text())
             
             # Extract headings
@@ -311,7 +348,7 @@ class ContentExtractor:
             # Extract structured content
             structured = self._extract_structured_content(main_content)
             
-            # Process images
+            # Process images (keep for backward compatibility)
             images = self._process_images(main_content, url)
             
             # Extract links
@@ -328,9 +365,10 @@ class ContentExtractor:
             content_data = {
                 'metadata': metadata,
                 'text': text_content,
+                'html_content': html_content_with_images,  # NEW: HTML with inline images
                 'headings': headings,
                 'structured': structured,
-                'images': images,
+                'images': images,  # Keep for backward compatibility
                 'links': links,
                 'word_count': len(text_content.split()),
                 'char_count': len(text_content)

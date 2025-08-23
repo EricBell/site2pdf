@@ -197,6 +197,31 @@ class PDFGenerator:
                 line-height: 1.7;
             }}
             
+            .html-content {{
+                margin: 20px 0;
+                line-height: 1.7;
+            }}
+            
+            .html-content img {{
+                max-width: 100%;
+                height: auto;
+                display: inline-block;
+                vertical-align: middle;
+                margin: 10px 0;
+            }}
+            
+            .html-content p {{
+                margin: 12px 0;
+                text-align: justify;
+            }}
+            
+            .html-content h1, .html-content h2, .html-content h3, 
+            .html-content h4, .html-content h5, .html-content h6 {{
+                color: #2c3e50;
+                margin: 25px 0 15px 0;
+                page-break-after: avoid;
+            }}
+            
             .image-container {{
                 text-align: center;
                 margin: 20px 0;
@@ -316,27 +341,34 @@ class PDFGenerator:
         # Page header
         parts.append(self._generate_page_header(page_data, page_number))
         
-        # Main text content
-        text = page_data.get('text', '')
-        if text:
-            parts.append(f'<div class="content-text">{self._format_text_content(text)}</div>')
-            
-        # Headings (if they exist as separate structure)
-        headings = page_data.get('headings', [])
-        if headings:
-            parts.append(self._format_headings(headings))
-            
-        # Structured content
-        structured = page_data.get('structured', {})
-        if structured:
-            parts.append(self._format_structured_content(structured))
-            
-        # Images
-        images = page_data.get('images', [])
-        if images:
-            parts.append(self._format_images(images))
-            
-        # Links
+        # Use HTML content with inline images if available
+        html_content = page_data.get('html_content', '')
+        if html_content:
+            # Clean and process the HTML content
+            parts.append(f'<div class="html-content">{html_content}</div>')
+        else:
+            # Fallback to old method for backward compatibility
+            # Main text content
+            text = page_data.get('text', '')
+            if text:
+                parts.append(f'<div class="content-text">{self._format_text_content(text)}</div>')
+                
+            # Headings (if they exist as separate structure)
+            headings = page_data.get('headings', [])
+            if headings:
+                parts.append(self._format_headings(headings))
+                
+            # Structured content
+            structured = page_data.get('structured', {})
+            if structured:
+                parts.append(self._format_structured_content(structured))
+                
+            # Images
+            images = page_data.get('images', [])
+            if images:
+                parts.append(self._format_images(images))
+        
+        # Links (always show regardless of content method)
         links = page_data.get('links', [])
         if links:
             parts.append(self._format_links(links))
