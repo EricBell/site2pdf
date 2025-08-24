@@ -1,6 +1,6 @@
 metadata:
   created: '2025-08-23T22:26:53.750048'
-  last_modified: '2025-08-23T22:38:48.407161'
+  last_modified: '2025-08-24T15:06:15.868897'
   version: '1.0'
 todos:
   45a9ef23:
@@ -29,29 +29,29 @@ todos:
   fb0a0cf7:
     description: separaate the output to a module. This way there's a pdf output module,
       a markdown module, an xml module in time, etc.
-    status: pending
+    status: completed
     priority: medium
     category: general
     created: '2025-08-23T22:29:08.332516'
     due_date: null
-    completed: null
+    completed: '2025-08-24T15:06:15.868875'
     notes: []
   eaee040f:
     description: pull out the version system into a package for easy reuse.
-    status: pending
+    status: completed
     priority: medium
     category: general
     created: '2025-08-23T22:38:32.668504'
     due_date: null
-    completed: null
+    completed: '2025-08-24T15:04:38.387651'
     notes: []
   c299e3f4:
     description: pull out the todo system, like the version system, and make apackage
       out of it for easy reuse.
-    status: pending
+    status: completed
     priority: medium
     category: general
     created: '2025-08-23T22:38:48.407131'
     due_date: null
-    completed: null
+    completed: '2025-08-24T15:04:56.696712'
     notes: []
