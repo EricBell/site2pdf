@@ -45,13 +45,24 @@ EPUB book generation:
 - Custom cover generation
 
 ### 📝 Markdown Generator (`generators.markdown`)
-**Status: 🚧 Planned**
+**Status: ✅ Complete**
 
-Markdown documentation generation:
-- Multi-file markdown output
-- GitBook/MkDocs compatibility
-- Cross-references and linking
-- Code syntax highlighting
+Clean, structured markdown generation from scraped content:
+- HTML-to-Markdown conversion with proper formatting
+- Single-file or multi-file output modes
+- Table of contents with anchor links
+- GitHub-compatible markdown syntax
+- Configurable content processing
+
+```python
+from generators.markdown import MarkdownGenerator
+
+generator = MarkdownGenerator(config)
+output_path = generator.generate(scraped_data, base_url="https://example.com", output="docs.md")
+```
+
+**Dependencies:**
+- None (uses built-in HTML parsing and text conversion)
 
 ## Architecture
 
@@ -87,6 +98,8 @@ if not is_valid:
 ## Usage Examples
 
 ### Basic Usage
+
+#### PDF Generation
 ```python
 from generators.pdf import PDFGenerator
 
@@ -109,7 +122,26 @@ if success:
     print("PDF generated successfully!")
 ```
 
+#### Markdown Generation
+```python
+from generators.markdown import MarkdownGenerator
+
+# Initialize generator
+generator = MarkdownGenerator(config)
+
+# Generate single markdown file
+output_path = generator.generate(
+    scraped_data=scraped_pages,
+    base_url="https://example.com",
+    output="documentation.md"
+)
+
+print(f"Markdown generated: {output_path}")
+```
+
 ### Advanced Configuration
+
+#### PDF Configuration
 ```python
 # Custom PDF styling
 pdf_config = {
@@ -123,12 +155,38 @@ pdf_config = {
         'min_content_length': 100,
         'include_images': True
     },
-    'output': {
-        'directory': './output'
+    'directories': {
+        'output_dir': './output'
     }
 }
 
 generator = PDFGenerator(pdf_config)
+```
+
+#### Markdown Configuration
+```python
+# Custom markdown settings
+markdown_config = {
+    'markdown': {
+        'output_filename': 'docs.md',
+        'multi_file': False,    # Single file vs directory with multiple files
+        'include_toc': True     # Include table of contents
+    },
+    'content': {
+        'min_content_length': 50,
+        'include_images': True,
+        'include_menus': False
+    },
+    'directories': {
+        'output_dir': './output'
+    }
+}
+
+generator = MarkdownGenerator(markdown_config)
+
+# Multi-file output creates directory with README.md and individual page files
+markdown_config['markdown']['multi_file'] = True
+output_dir = generator.generate(scraped_data, base_url)
 ```
 
 ### Error Handling
@@ -209,14 +267,19 @@ config = {
         'orientation': 'portrait',
         'include_toc': True
     },
+    'markdown': {      # Markdown-specific settings  
+        'output_filename': 'scraped_website.md',
+        'multi_file': False,
+        'include_toc': True
+    },
     'content': {       # Content processing settings
         'min_content_length': 100,
         'include_images': True,
         'include_menus': False
     },
-    'output': {        # Output settings
-        'directory': './output',
-        'filename_template': '{title}_{date}'
+    'directories': {   # Output settings
+        'output_dir': './output',
+        'temp_dir': './temp'
     }
 }
 ```
@@ -227,6 +290,9 @@ config = {
 - `weasyprint >= 52.0` - HTML/CSS to PDF conversion
 - `beautifulsoup4 >= 4.9.0` - HTML parsing and sanitization
 
+### Markdown Generator  
+- None (uses built-in Python libraries for HTML parsing and text conversion)
+
 ### Future Generators
 Dependencies will be documented in each subpackage's README.
 
@@ -235,6 +301,7 @@ Dependencies will be documented in each subpackage's README.
 ### Current Project
 ```python
 from generators.pdf import PDFGenerator
+from generators.markdown import MarkdownGenerator
 ```
 
 ### Copy to Other Projects

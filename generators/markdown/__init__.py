@@ -1,29 +1,11 @@
-#!/usr/bin/env python3
 """
-Markdown Generator
-==================
+Markdown Generator Package
 
-Markdown documentation generation from scraped content.
-
-Future features:
-- Multi-file markdown output
-- GitBook/MkDocs compatibility
-- Table of contents generation
-- Cross-references and linking
-- Code syntax highlighting
-
-This subpackage is a placeholder for future development.
-
-Dependencies (planned):
-- markdown: Markdown processing
-- beautifulsoup4: HTML to Markdown conversion
-- html2text: HTML to Markdown conversion
+Provides markdown generation functionality for scraped website content.
+Exports content in clean, formatted markdown files.
 """
 
-# Placeholder for future Markdown generator
-__version__ = "0.1.0"
-__all__ = []
+from .markdown_generator import MarkdownGenerator
 
-# Future implementation:
-# from .markdown_generator import MarkdownGenerator
-# __all__ = ['MarkdownGenerator']
+__version__ = "1.0.0"
+__all__ = ['MarkdownGenerator']

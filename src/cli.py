@@ -17,6 +17,7 @@ except ImportError:
 try:
     # Try importing from project root (when run via run.py)
     from generators.pdf import PDFGenerator
+    from generators.markdown import MarkdownGenerator
 except ImportError:
     try:
         # Try importing from parent directory (when run from src/)
@@ -26,12 +27,15 @@ except ImportError:
         if parent_dir not in sys.path:
             sys.path.insert(0, parent_dir)
         from generators.pdf import PDFGenerator
+        from generators.markdown import MarkdownGenerator
     except ImportError:
         # Fallback to old location during transition
         try:
             from .pdf_generator import PDFGenerator
+            from generators.markdown import MarkdownGenerator
         except ImportError:
             from pdf_generator import PDFGenerator
+            from generators.markdown import MarkdownGenerator
 
 
 @click.command()
@@ -71,7 +75,11 @@ except ImportError:
               help='Load previously approved URLs from file')
 @click.option('--include-menus', 
               is_flag=True, 
-              help='Include navigation menus in PDF output (default: exclude)')
+              help='Include navigation menus in output (default: exclude)')
+@click.option('--format', '-f',
+              type=click.Choice(['pdf', 'markdown', 'md'], case_sensitive=False),
+              default='pdf',
+              help='Output format (pdf, markdown)')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -84,9 +92,10 @@ def scrape(base_url: str,
            exclude: tuple,
            save_approved: Optional[str],
            load_approved: Optional[str],
-           include_menus: bool):
+           include_menus: bool,
+           format: str):
     """
-    Scrape a website and generate a PDF document.
+    Scrape a website and generate output document.
     
     BASE_URL: The starting URL to scrape from
     """
@@ -212,21 +221,33 @@ def scrape(base_url: str,
             
         click.echo(f"✅ Scraped {len(scraped_data)} pages")
         
-        # Generate PDF
+        # Generate output based on format
         try:
             from .progress_tracker import ProgressTracker, Phase
         except ImportError:
             from progress_tracker import ProgressTracker, Phase
         progress = ProgressTracker(verbose=verbose)
-        progress.start_phase(Phase.PDF_GENERATION, 1, "Creating PDF document")
         
-        pdf_generator = PDFGenerator(app_config)
-        output_path = pdf_generator.generate_pdf(scraped_data, base_url)
+        # Normalize format
+        format_lower = format.lower()
+        if format_lower == 'md':
+            format_lower = 'markdown'
         
-        progress.finish_phase("PDF generated successfully")
+        if format_lower == 'pdf':
+            progress.start_phase(Phase.PDF_GENERATION, 1, "Creating PDF document")
+            generator = PDFGenerator(app_config)
+            output_path = generator.generate_pdf(scraped_data, base_url)
+            progress.finish_phase("PDF generated successfully")
+            click.echo(f"🎉 PDF generated successfully: {output_path}")
+        
+        elif format_lower == 'markdown':
+            progress.start_phase(Phase.PDF_GENERATION, 1, "Creating Markdown document")  # Reusing PDF phase for now
+            generator = MarkdownGenerator(app_config)
+            output_path = generator.generate(scraped_data, base_url, output=output)
+            progress.finish_phase("Markdown generated successfully")
+            click.echo(f"🎉 Markdown generated successfully: {output_path}")
+        
         progress.cleanup()
-        
-        click.echo(f"🎉 PDF generated successfully: {output_path}")
         
     except KeyboardInterrupt:
         click.echo("\n⚠️  Scraping interrupted by user")

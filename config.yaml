@@ -1,207 +1,100 @@
-# Public Configuration - Safe to commit to version control
-
-# Crawling Settings
-crawling:
-  # Maximum crawl depth from base URL
-  max_depth: 5
-  
-  # Delay between requests (seconds)
-  request_delay: 2.0
-  
-  # Maximum number of pages to scrape
-  max_pages: 1000
-  
-  # Request timeout (seconds)
-  timeout: 30
-  
-  # Follow external links (cross-domain)
-  follow_external: false
-  
-  # Respect robots.txt
-  respect_robots: false
-
-# HTTP Settings
-http:
-  # User agent string
-  # user_agent: "site2pdf/1.0 (+https://github.com/yourusername/site2pdf)"
-  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0
-  
-  # Maximum retries for failed requests
-  max_retries: 3
-  
-  # Retry delay (seconds)
-  retry_delay: 5
-  
-  # Enable/disable cookies
-  use_cookies: true
-
-# Content Processing
 content:
-  # Include images in PDF
+  allowed_image_formats:
+  - jpg
+  - jpeg
+  - png
+  - gif
+  - webp
   include_images: true
-  
-  # Maximum image size to download (MB)
-  max_image_size: 10
-  
-  # Image formats to include
-  allowed_image_formats: ["jpg", "jpeg", "png", "gif", "webp"]
-  
-  # Extract and include page metadata
-  include_metadata: true
-  
-  # Include navigation menus in PDF (default: false)
   include_menus: false
-  
-  # Minimum content length to include page (characters)
+  include_metadata: true
+  max_image_size: 10
   min_content_length: 100
-
-# PDF Generation
+crawling:
+  follow_external: false
+  max_depth: 5
+  max_pages: 1000
+  request_delay: 2.0
+  respect_robots: false
+  timeout: 30
+directories:
+  logs_dir: logs
+  output_dir: output
+  temp_dir: temp
+filters:
+  exclude_patterns:
+  - .*\.pdf$
+  - .*\.zip$
+  - .*\.exe$
+  - /admin/.*
+  - /login.*
+  - /logout.*
+  max_url_length: 2000
+  skip_extensions:
+  - pdf
+  - zip
+  - exe
+  - dmg
+  - pkg
+http:
+  max_retries: 3
+  retry_delay: 5
+  use_cookies: true
+  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0
+human_behavior:
+  browsing:
+    max_session_pages: 100
+    respect_business_hours: false
+    robots_respect_probability: 0.8
+    session_break_after: 50
+    session_break_duration:
+    - 30
+    - 120
+    weekend_factor: 1.2
+  delays:
+    base_reading_time:
+    - 2
+    - 8
+    complexity_multiplier: 1.5
+    fatigue_factor: 0.1
+    maximum_delay: 30
+    minimum_delay: 0.8
+    navigation_decision:
+    - 1
+    - 3
+    variance_percent: 30
+  detection_avoidance:
+    adaptive_delays: true
+    handle_cookies: true
+    monitor_rate_limits: true
+    realistic_headers: true
+    track_referrers: true
+logging:
+  level: INFO
+  log_filename: scraper.log
+  log_to_file: true
+  rotate_logs: true
+markdown:
+  include_toc: true
+  multi_file: false
+  output_filename: scraped_website.md
+path_scoping:
+  allow_homepage: true
+  allow_navigation: limited
+  allow_parent_levels: 1
+  allow_siblings: true
+  enabled: true
+  max_external_depth: 1
 pdf:
-  # Default output filename
-  output_filename: "scraped_website.pdf"
-  
-  # Page size (A4, Letter, etc.)
-  page_size: "A4"
-  
-  # Margins (mm)
+  font:
+    family: Arial
+    size: 11
+  include_page_numbers: true
+  include_toc: true
   margins:
-    top: 20
     bottom: 20
     left: 15
     right: 15
-  
-  # Font settings
-  font:
-    family: "Arial"
-    size: 11
-    
-  # Include table of contents
-  include_toc: true
-  
-  # Include page numbers
-  include_page_numbers: true
-
-# Logging
-logging:
-  # Log level (DEBUG, INFO, WARNING, ERROR)
-  level: "INFO"
-  
-  # Log to file
-  log_to_file: true
-  
-  # Log filename
-  log_filename: "scraper.log"
-  
-  # Rotate logs
-  rotate_logs: true
-
-# Output Directories
-directories:
-  # Output directory for PDFs
-  output_dir: "output"
-  
-  # Temporary directory for images
-  temp_dir: "temp"
-  
-  # Logs directory
-  logs_dir: "logs"
-
-# URL Filtering
-filters:
-  # URL patterns to exclude (regex)
-  exclude_patterns:
-    - ".*\\.pdf$"
-    - ".*\\.zip$"
-    - ".*\\.exe$"
-    - "/admin/.*"
-    - "/login.*"
-    - "/logout.*"
-  
-  # File extensions to skip
-  skip_extensions: ["pdf", "zip", "exe", "dmg", "pkg"]
-  
-  # Maximum URL length
-  max_url_length: 2000
-
-# Human-Like Behavior Simulation
-human_behavior:
-  # Delay Settings (seconds)
-  delays:
-    # Base time to "read" page content [min, max]
-    base_reading_time: [2, 8]
-    
-    # Time to "decide" what to click next [min, max]  
-    navigation_decision: [1, 3]
-    
-    # Random variance in delays (± percentage)
-    variance_percent: 30
-    
-    # Multiplier for content-heavy pages
-    complexity_multiplier: 1.5
-    
-    # Gradual slowdown factor (fatigue simulation)
-    fatigue_factor: 0.1
-    
-    # Absolute minimum delay (safety)
-    minimum_delay: 0.8
-    
-    # Maximum delay (practicality)
-    maximum_delay: 30
-  
-  # Browsing Behavior
-  browsing:
-    # Respect business hours (slower outside 9-5)
-    respect_business_hours: false
-    
-    # Weekend browsing factor (1.2 = 20% slower)
-    weekend_factor: 1.2
-    
-    # Maximum pages per session before long break
-    max_session_pages: 100
-    
-    # Take breaks every N pages
-    session_break_after: 50
-    
-    # Session break duration [min, max] seconds
-    session_break_duration: [30, 120]
-    
-    # Probability of respecting robots.txt (0.8 = 80%)
-    robots_respect_probability: 0.8
-  
-  # Anti-Detection Features
-  detection_avoidance:
-    # Enable realistic browser headers
-    realistic_headers: true
-    
-    # Enable cookie handling
-    handle_cookies: true
-    
-    # Enable referrer tracking
-    track_referrers: true
-    
-    # Monitor for rate limiting
-    monitor_rate_limits: true
-    
-    # Automatic slowdown when detected
-    adaptive_delays: true
-
-# Path-Based URL Scoping
-path_scoping:
-  # Enable intelligent path-based URL limiting
-  enabled: true
-  
-  # Allow parent levels above starting path (1 = immediate parent)
-  allow_parent_levels: 1
-  
-  # Always allow homepage even if outside scope
-  allow_homepage: true
-  
-  # Navigation link handling: strict/limited/none
-  # strict: only within scope, limited: allow but don't crawl deep, none: block all
-  allow_navigation: "limited"
-  
-  # Maximum depth to crawl outside primary scope (for navigation)
-  max_external_depth: 1
-  
-  # Allow sibling paths at same level (e.g. /docs/api/ and /docs/guides/)
-  allow_siblings: true
+    top: 20
+  output_filename: scraped_website.pdf
+  page_size: A4

@@ -17,11 +17,13 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 📈 **Adaptive Behavior**: Detects rate limiting and adjusts automatically
 - 😴 **Fatigue Simulation**: Gradually slower over time like real users
 
-### 📄 **Advanced PDF Generation**
-- 📖 **Documentation Focus**: Prioritizes user-facing content over technical files
+### 📄 **Multi-Format Output Generation**
+- 📖 **PDF Generation**: Professional PDFs with documentation focus
+- 📝 **Markdown Export**: Clean, structured markdown with HTML-to-markdown conversion
 - 🖼️ **Image Embedding**: Downloads and includes images with proper formatting
-- 📚 **Table of Contents**: Automatic TOC generation with page links
+- 📚 **Table of Contents**: Automatic TOC generation with page/anchor links
 - 🎨 **Professional Layout**: Clean, readable formatting with proper structure
+- 📁 **Multi-File Support**: Single document or individual files per page
 
 ### 🔧 **Powerful Configuration**
 - 🎮 **Interactive Preview**: Tree-view URL selection with approval system
@@ -65,16 +67,22 @@ pip install -r requirements.txt
 
 #### Website Scraping
 ```bash
-# Scrape a website and generate PDF
+# Scrape a website and generate PDF (default)
 python run.py scrape https://example.com
+
+# Generate markdown instead of PDF
+python run.py scrape https://example.com --format markdown
 
 # With custom options
 python run.py scrape https://example.com --output my-site.pdf --max-depth 3 --verbose
 
-# Exclude navigation menus from PDF (default)
+# Export to markdown with custom filename
+python run.py scrape https://example.com --format md --output my-site.md
+
+# Exclude navigation menus from output (default)
 python run.py scrape https://example.com
 
-# Include navigation menus in PDF
+# Include navigation menus in output
 python run.py scrape https://example.com --include-menus
 
 # Dry run to see what would be scraped
@@ -103,7 +111,8 @@ python run.py todo stats
 
 #### Scraping Commands (`python run.py scrape [options] <url>`)
 - `base_url` (required): The starting URL to scrape
-- `--output, -o`: Output PDF filename
+- `--output, -o`: Output filename (PDF or Markdown)
+- `--format, -f`: Output format (pdf, markdown, md) - default: pdf
 - `--max-depth, -d`: Maximum crawl depth
 - `--max-pages, -p`: Maximum number of pages to scrape
 - `--delay`: Delay between requests (seconds)
@@ -114,7 +123,7 @@ python run.py todo stats
 - `--exclude`: URL patterns to exclude (can use multiple times)
 - `--save-approved`: Save approved URLs to file for reuse
 - `--load-approved`: Load previously approved URLs from file
-- `--include-menus`: Include navigation menus in PDF output (default: exclude)
+- `--include-menus`: Include navigation menus in output (default: exclude)
 
 #### Todo Management Commands (`python run.py todo <command>`)
 - `add <description>`: Add a new todo item
@@ -147,7 +156,7 @@ crawling:
   max_pages: 1000
 
 content:
-  include_menus: false        # Exclude navigation menus (NEW)
+  include_menus: false        # Exclude navigation menus
   include_images: true
   include_metadata: true
 
@@ -155,6 +164,11 @@ pdf:
   output_filename: "scraped_website.pdf"
   page_size: "A4"
   include_toc: true
+
+markdown:
+  output_filename: "scraped_website.md"
+  multi_file: false          # Single file vs multiple files
+  include_toc: true          # Include table of contents
 
 # ... see config.yaml for full options
 ```
@@ -188,11 +202,18 @@ site2pdf/
 │   ├── cli.py             # Click CLI interface
 │   ├── scraper.py         # Web scraping logic
 │   ├── extractor.py       # Content extraction
-│   ├── pdf_generator.py   # PDF creation
-│   ├── todo_manager.py    # Todo management logic (NEW)
-│   ├── todo_cli.py        # Todo CLI commands (NEW)
+│   ├── todo_manager.py    # Todo management logic
+│   ├── todo_cli.py        # Todo CLI commands
 │   └── utils.py           # Utility functions
-├── output/                # Generated PDFs
+├── generators/             # Output format generators (NEW)
+│   ├── __init__.py        # Base classes and validation
+│   ├── pdf/               # PDF generation package
+│   │   └── pdf_generator.py
+│   └── markdown/          # Markdown generation package (NEW)
+│       └── markdown_generator.py
+├── system_tools/           # Reusable system utilities (NEW)
+│   └── versioning/        # Version management
+├── output/                # Generated files (PDF, Markdown)
 ├── temp/                  # Temporary files (images)
 └── logs/                  # Log files
 ```
@@ -203,31 +224,52 @@ site2pdf/
 
 #### Basic Website Scraping
 ```bash
+# PDF output (default)
 python run.py scrape https://docs.python.org
+
+# Markdown output
+python run.py scrape https://docs.python.org --format markdown
 ```
 
 #### Limited Depth Scraping
 ```bash
-python run.py scrape https://example.com --max-depth 2 --max-pages 50
+python run.py scrape https://example.com --max-depth 2 --max-pages 50 --format md
 ```
 
 #### Custom Configuration
 ```bash
+# PDF with custom filename
 python run.py scrape https://example.com --config custom-config.yaml --output custom-name.pdf
+
+# Markdown with custom filename
+python run.py scrape https://example.com --format markdown --output docs.md
 ```
 
 #### Verbose Mode with Custom Delay
 ```bash
-python run.py scrape https://example.com --verbose --delay 3
+python run.py scrape https://example.com --verbose --delay 3 --format markdown
 ```
 
 #### Menu Exclusion Examples
 ```bash
-# Default behavior - exclude menus
-python run.py scrape https://docs.example.com
+# Default behavior - exclude menus (works for both PDF and Markdown)
+python run.py scrape https://docs.example.com --format markdown
 
 # Include menus for sites where navigation is important
-python run.py scrape https://docs.example.com --include-menus
+python run.py scrape https://docs.example.com --include-menus --format md
+```
+
+#### Markdown-Specific Examples
+```bash
+# Generate single markdown file (default)
+python run.py scrape https://example.com/docs --format markdown
+
+# Configure for multi-file output (modify config.yaml: markdown.multi_file: true)
+# Creates directory with README.md index and individual page files
+python run.py scrape https://example.com/docs --format markdown
+
+# Markdown with table of contents (default)
+python run.py scrape https://example.com/docs --format md --output documentation.md
 ```
 
 ### Todo Management Examples
@@ -401,7 +443,10 @@ Enhanced error handling and recovery for reliable PDF creation:
 
 The application generates:
 
-- **PDF Document**: Comprehensive PDF with all scraped content
+- **PDF Document**: Comprehensive PDF with all scraped content (--format pdf)
+- **Markdown Files**: Clean, structured markdown documents (--format markdown)
+  - Single file: All content in one markdown document with TOC
+  - Multi-file: Directory with README.md index and individual page files
 - **Log Files**: Detailed crawling and processing logs in `logs/`
 - **Temporary Files**: Downloaded images stored in `temp/` during processing
 - **Todo Database**: YAML-based todo storage in `todos.yaml` (when using todo features)
@@ -485,14 +530,24 @@ python run.py todo stats
 # 🔥 Overdue:       1
 ```
 
-## PDF Features
+## Output Format Features
 
+### PDF Features
 - ✅ Table of contents with page links
 - ✅ Preserved content structure and formatting
 - ✅ Embedded images with captions
 - ✅ Page numbers and metadata
 - ✅ Professional styling and layout
 - ✅ Link references for each page
+
+### Markdown Features
+- ✅ Clean HTML-to-Markdown conversion
+- ✅ Table of contents with anchor links
+- ✅ Preserved content structure and formatting
+- ✅ Links and images properly converted
+- ✅ Single-file or multi-file output modes
+- ✅ GitHub-compatible markdown syntax
+- ✅ Configurable via YAML settings
 
 ## Compliance & Ethics
 
