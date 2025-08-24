@@ -1,7 +1,7 @@
 # Website Scraping to PDF Application - Requirements
 
 ## Project Overview
-Create a Python CLI application that scrapes a website and all its subpages, then generates a single PDF document containing all the content with embedded images.
+Create a Python CLI application that scrapes a website and all its subpages, then generates a single PDF document containing all the content with embedded images. The application also includes comprehensive todo management for project organization and tracking.
 
 ## Functional Requirements
 
@@ -49,21 +49,27 @@ Create a Python CLI application that scrapes a website and all its subpages, the
 ```
 
 site2pdf/
-├── requirements.md          # This file
+├── requirements.md          # This file  
 ├── .env                    # Private configuration
 ├── config.yaml             # Public configuration
+├── todos.yaml              # Todo management storage (created automatically)
 ├── .gitignore             # Version control exclusions
 ├── package.json           # Project metadata
 ├── requirements.txt       # Python dependencies
+├── run.py                 # Main entry point
 ├── src/
 │   ├── __init__.py
 │   ├── cli.py            # Click CLI interface
 │   ├── scraper.py        # Web scraping logic
-│   ├── extractor.py      # Content extraction
-│   ├── pdf_generator.py  # PDF creation
+│   ├── extractor.py      # Content extraction with menu exclusion
+│   ├── pdf_generator.py  # Robust PDF creation
 │   ├── preview.py        # URL preview and approval system
+│   ├── todo_manager.py   # Todo management logic (NEW)
+│   ├── todo_cli.py       # Todo CLI commands (NEW)
 │   └── utils.py          # Utility functions
-└── output/               # Generated PDFs and assets
+├── output/               # Generated PDFs
+├── temp/                 # Temporary files (images)
+└── logs/                 # Log files
 ```
 
 ### Configuration Management
@@ -135,6 +141,29 @@ site2pdf/
 - **URL list persistence**: Save and reuse approved URL sets
 - **Scope visualization**: Shows path boundaries and filtering rules
 
+### Smart Menu Exclusion (NEW)
+- **Configurable menu removal**: Default exclusion of navigation menus from PDFs
+- **Multi-pattern detection**: CSS selectors, semantic elements, heuristic analysis
+- **Position-aware handling**: Supports left, right, top, bottom navigation layouts
+- **Override capability**: `--include-menus` flag to preserve navigation when needed
+
+### Robust PDF Generation (NEW)  
+- **Data validation**: Comprehensive validation of scraped content before PDF creation
+- **HTML sanitization**: Automatic repair of malformed HTML using BeautifulSoup
+- **Progressive fallbacks**: Multiple content generation strategies for reliability
+- **Enhanced error handling**: Graceful recovery from WeasyPrint and content issues
+
+### Integrated Todo Management System (NEW)
+- **YAML-based storage**: Structured todo database in `todos.yaml`
+- **Rich CLI interface**: Beautiful icons, colors, and visual indicators
+- **Priority system**: Low, Medium, High, Urgent with visual feedback
+- **Status tracking**: Pending, In Progress, Completed, Cancelled workflows
+- **Category organization**: Flexible categorization (bugs, features, documentation)
+- **Due date management**: Smart date parsing and overdue alerts
+- **Note system**: Timestamped notes for detailed task tracking
+- **Search capabilities**: Full-text search across descriptions, categories, notes
+- **Statistics dashboard**: Progress tracking and project insights
+
 ## Future Enhancements
 - Support for JavaScript-rendered content
 - Multiple output formats (HTML, EPUB, etc.)
@@ -144,59 +173,84 @@ site2pdf/
 
 ## Usage Examples
 
-### Basic Usage
+### Website Scraping Usage  
 ```bash
 # Simple scraping
-python -m src.cli https://example.com
+python run.py scrape https://example.com
 
-# With custom output filename
-python -m src.cli https://example.com --output my-site.pdf
+# With custom output filename  
+python run.py scrape https://example.com --output my-site.pdf
+
+# Exclude menus from PDF (default behavior)
+python run.py scrape https://example.com  
+
+# Include menus in PDF
+python run.py scrape https://example.com --include-menus
 
 # Dry run to see what would be scraped
-python -m src.cli https://example.com --dry-run
+python run.py scrape https://example.com --dry-run
+```
+
+### Todo Management Usage
+```bash  
+# Add todos with priorities and due dates
+python run.py todo add "Fix PDF generation crash" --priority urgent --due today --category bug
+python run.py todo add "Implement user auth" --priority high --due "2024-09-01" --category feature
+
+# List and manage todos
+python run.py todo list                    # Show active todos
+python run.py todo list --completed       # Include completed  
+python run.py todo list --priority high   # Filter by priority
+python run.py todo done [todo_id]         # Mark completed
+
+# Advanced todo operations
+python run.py todo search "PDF"           # Search todos
+python run.py todo note [id] "Added debug logging for investigation"
+python run.py todo stats                  # Project statistics  
 ```
 
 ### Preview and Approval Mode
 ```bash
 # Interactive preview with tree structure and approval
-python -m src.cli https://example.com --preview
+python run.py scrape https://example.com --preview
 
 # Preview with pre-filtering patterns
-python -m src.cli https://example.com --preview --exclude "/admin" --exclude "/api"
+python run.py scrape https://example.com --preview --exclude "/admin" --exclude "/api"
 
 # Save approved URLs for future use
-python -m src.cli https://example.com --preview --save-approved approved_urls.json
+python run.py scrape https://example.com --preview --save-approved approved_urls.json
 ```
 
-### URL Filtering
+### URL Filtering  
 ```bash
 # Exclude specific patterns
-python -m src.cli https://example.com --exclude "/login" --exclude "/search"
+python run.py scrape https://example.com --exclude "/login" --exclude "/search"
 
 # Exclude using regex patterns
-python -m src.cli https://example.com --exclude ".*\.(pdf|zip|exe)$"
+python run.py scrape https://example.com --exclude ".*\.(pdf|zip|exe)$"
 
 # Multiple exclude patterns
-python -m src.cli https://example.com --exclude "/admin" --exclude "/api" --exclude "/private"
+python run.py scrape https://example.com --exclude "/admin" --exclude "/api" --exclude "/private"
 ```
 
 ### Reusing Approved Lists
 ```bash
 # Load previously approved URLs
-python -m src.cli https://example.com --load-approved approved_urls.json
+python run.py scrape https://example.com --load-approved approved_urls.json
 
 # Combine with additional filtering
-python -m src.cli https://example.com --load-approved approved_urls.json --exclude "/temp"
+python run.py scrape https://example.com --load-approved approved_urls.json --exclude "/temp"
 ```
 
 ### Advanced Options
 ```bash
 # Full configuration with all options
-python -m src.cli https://example.com \
+python run.py scrape https://example.com \
   --preview \
   --max-depth 3 \
   --max-pages 100 \
   --delay 2.0 \
+  --include-menus \
   --exclude "/admin" \
   --exclude "/search" \
   --save-approved my-site-approved.json \
@@ -204,7 +258,7 @@ python -m src.cli https://example.com \
   --verbose
 
 # Configuration file usage
-python -m src.cli https://example.com --config custom-config.yaml --preview
+python run.py scrape https://example.com --config custom-config.yaml --preview
 ```
 
 ### Interactive Preview Workflow
