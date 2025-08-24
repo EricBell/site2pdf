@@ -6,6 +6,7 @@ from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 import tempfile
 import shutil
+from bs4 import BeautifulSoup
 
 
 class PDFGenerator:
@@ -15,24 +16,86 @@ class PDFGenerator:
         self.font_config = FontConfiguration()
 
     def _generate_html_content(self, scraped_data: List[Dict[str, Any]], base_url: str) -> str:
-        """Generate HTML content for PDF conversion."""
-        html_parts = []
-        
-        # Document header
-        html_parts.append(self._generate_document_header(base_url))
-        
-        # Table of contents
-        if self.config['pdf']['include_toc']:
-            html_parts.append(self._generate_table_of_contents(scraped_data))
+        """Generate HTML content for PDF conversion with error handling."""
+        try:
+            html_parts = []
             
-        # Main content
-        for i, page_data in enumerate(scraped_data):
-            html_parts.append(self._generate_page_content(page_data, i + 1))
+            # Document header
+            try:
+                html_parts.append(self._generate_document_header(base_url))
+            except Exception as e:
+                self.logger.warning(f"Error generating document header: {e}")
+                # Fallback header
+                html_parts.append('''
+                    <!DOCTYPE html>
+                    <html><head><title>Website Documentation</title></head><body>
+                    <div class="cover-page"><h1>Website Documentation</h1></div>
+                ''')
             
-        # Document footer
-        html_parts.append(self._generate_document_footer())
-        
-        return '\n'.join(html_parts)
+            # Table of contents
+            if self.config['pdf'].get('include_toc', True):
+                try:
+                    toc = self._generate_table_of_contents(scraped_data)
+                    if toc:
+                        html_parts.append(toc)
+                except Exception as e:
+                    self.logger.warning(f"Error generating table of contents: {e}")
+                    
+            # Main content with progress tracking
+            successful_pages = 0
+            failed_pages = 0
+            
+            for i, page_data in enumerate(scraped_data):
+                try:
+                    page_content = self._generate_page_content(page_data, i + 1)
+                    if page_content:
+                        html_parts.append(page_content)
+                        successful_pages += 1
+                    else:
+                        failed_pages += 1
+                        self.logger.warning(f"Empty content generated for page {i + 1}")
+                except Exception as e:
+                    failed_pages += 1
+                    self.logger.error(f"Failed to generate content for page {i + 1}: {e}")
+                    # Add minimal error page
+                    url = page_data.get('url', 'Unknown') if isinstance(page_data, dict) else 'Unknown'
+                    html_parts.append(f'''
+                        <div class="page-section" id="page-{i + 1}">
+                            <div class="page-header">
+                                <h1>Page {i + 1} - Processing Error</h1>
+                                <div class="page-url">{self._escape_html(str(url))}</div>
+                            </div>
+                            <div class="error-content">
+                                <p>This page could not be processed and was skipped.</p>
+                            </div>
+                        </div>
+                    ''')
+                    
+            self.logger.info(f"PDF content generation: {successful_pages} successful, {failed_pages} failed")
+            
+            # Document footer
+            try:
+                html_parts.append(self._generate_document_footer())
+            except Exception as e:
+                self.logger.warning(f"Error generating document footer: {e}")
+                html_parts.append('</body></html>')
+            
+            return '\n'.join(html_parts)
+            
+        except Exception as e:
+            self.logger.error(f"Critical error in HTML content generation: {e}")
+            # Return minimal valid HTML document
+            return f'''
+                <!DOCTYPE html>
+                <html>
+                <head><title>Error - Website Documentation</title></head>
+                <body>
+                    <h1>Error Generating PDF Content</h1>
+                    <p>An error occurred while processing the website content.</p>
+                    <p>Base URL: {self._escape_html(str(base_url))}</p>
+                </body>
+                </html>
+            '''
 
     def _generate_document_header(self, base_url: str) -> str:
         """Generate document header with title and metadata."""
@@ -335,43 +398,95 @@ class PDFGenerator:
         return '\n'.join(toc_parts)
 
     def _generate_page_content(self, page_data: Dict[str, Any], page_number: int) -> str:
-        """Generate content for a single page."""
-        parts = [f'<div class="page-section" id="page-{page_number}">']
-        
-        # Page header
-        parts.append(self._generate_page_header(page_data, page_number))
-        
-        # Use HTML content with inline images if available
-        html_content = page_data.get('html_content', '')
-        if html_content:
-            # Clean and process the HTML content
-            parts.append(f'<div class="html-content">{html_content}</div>')
-        else:
-            # Fallback to old method for backward compatibility
-            # Main text content
-            text = page_data.get('text', '')
-            if text:
-                parts.append(f'<div class="content-text">{self._format_text_content(text)}</div>')
+        """Generate content for a single page with robust error handling."""
+        try:
+            parts = [f'<div class="page-section" id="page-{page_number}">']
+            
+            # Page header
+            try:
+                parts.append(self._generate_page_header(page_data, page_number))
+            except Exception as e:
+                self.logger.warning(f"Error generating page header for page {page_number}: {e}")
+                parts.append(f'<div class="page-header"><h1>Page {page_number}</h1></div>')
+            
+            # Progressive fallback strategy for content
+            content_added = False
+            
+            # Try HTML content first (sanitized)
+            html_content = page_data.get('html_content', '')
+            if html_content:
+                try:
+                    sanitized_html = self._sanitize_html_content(html_content)
+                    if sanitized_html:
+                        parts.append(f'<div class="html-content">{sanitized_html}</div>')
+                        content_added = True
+                        self.logger.debug(f"Using sanitized HTML content for page {page_number}")
+                    else:
+                        self.logger.warning(f"HTML content sanitization failed for page {page_number}")
+                except Exception as e:
+                    self.logger.warning(f"Error processing HTML content for page {page_number}: {e}")
+            
+            # Fallback to structured content generation
+            if not content_added:
+                try:
+                    fallback_content = self._generate_fallback_content(page_data)
+                    parts.append(fallback_content)
+                    content_added = True
+                    self.logger.info(f"Using fallback content for page {page_number}")
+                except Exception as e:
+                    self.logger.warning(f"Error generating fallback content for page {page_number}: {e}")
+            
+            # Legacy fallback (keep for compatibility)
+            if not content_added:
+                try:
+                    # Main text content
+                    text = page_data.get('text', '')
+                    if text:
+                        parts.append(f'<div class="content-text">{self._format_text_content(text)}</div>')
+                        content_added = True
+                        
+                    # Headings (if they exist as separate structure)
+                    headings = page_data.get('headings', [])
+                    if headings:
+                        parts.append(self._format_headings(headings))
+                        
+                    # Structured content
+                    structured = page_data.get('structured', {})
+                    if structured:
+                        parts.append(self._format_structured_content(structured))
+                        
+                    # Images
+                    images = page_data.get('images', [])
+                    if images:
+                        parts.append(self._format_images(images))
+                        
+                    if content_added:
+                        self.logger.info(f"Using legacy content generation for page {page_number}")
+                except Exception as e:
+                    self.logger.warning(f"Error in legacy content generation for page {page_number}: {e}")
+            
+            # Final fallback - minimal content
+            if not content_added:
+                url = page_data.get('url', 'Unknown URL')
+                parts.append(f'<div class="error-content"><p>Content could not be processed for: {self._escape_html(url)}</p></div>')
+                self.logger.warning(f"Using minimal fallback content for page {page_number}")
                 
-            # Headings (if they exist as separate structure)
-            headings = page_data.get('headings', [])
-            if headings:
-                parts.append(self._format_headings(headings))
-                
-            # Structured content
-            structured = page_data.get('structured', {})
-            if structured:
-                parts.append(self._format_structured_content(structured))
-                
-            # Images
-            images = page_data.get('images', [])
-            if images:
-                parts.append(self._format_images(images))
+        except Exception as e:
+            # Ultimate fallback for completely broken pages
+            self.logger.error(f"Critical error generating content for page {page_number}: {e}")
+            parts = [
+                f'<div class="page-section" id="page-{page_number}">',
+                f'<div class="page-header"><h1>Page {page_number} - Error</h1></div>',
+                '<div class="error-content"><p>This page could not be processed due to an error.</p></div>'
+            ]
         
-        # Links (always show regardless of content method)
-        links = page_data.get('links', [])
-        if links:
-            parts.append(self._format_links(links))
+        # Try to add links if data is accessible
+        try:
+            links = page_data.get('links', []) if isinstance(page_data, dict) else []
+            if links:
+                parts.append(self._format_links(links))
+        except Exception as e:
+            self.logger.warning(f"Error adding links for page {page_number}: {e}")
             
         parts.append('</div>')
         return '\n'.join(parts)
@@ -510,31 +625,49 @@ class PDFGenerator:
         return '\n'.join(parts)
 
     def _format_links(self, links: List[Dict[str, str]]) -> str:
-        """Format links section."""
-        if not links:
-            return ""
-            
-        parts = [
-            '<div class="links-section">',
-            '<div class="links-title">Links found on this page:</div>'
-        ]
-        
-        for link_data in links[:20]:  # Limit to first 20 links
-            text = link_data.get('text', '')
-            href = link_data.get('href', '')
-            if text and href:
-                parts.append(f'''
-                    <div class="link-item">
-                        <strong>{self._escape_html(text)}</strong><br>
-                        <span class="link-url">{self._escape_html(href)}</span>
-                    </div>
-                ''')
+        """Format links section with error handling."""
+        try:
+            if not links or not isinstance(links, list):
+                return ""
                 
-        if len(links) > 20:
-            parts.append(f'<div class="link-item"><em>... and {len(links) - 20} more links</em></div>')
+            parts = [
+                '<div class="links-section">',
+                '<div class="links-title">Links found on this page:</div>'
+            ]
             
-        parts.append('</div>')
-        return '\n'.join(parts)
+            valid_links = 0
+            for link_data in links[:20]:  # Limit to first 20 links
+                try:
+                    if not isinstance(link_data, dict):
+                        continue
+                        
+                    text = link_data.get('text', '')
+                    href = link_data.get('href', '')
+                    
+                    if text and href and isinstance(text, str) and isinstance(href, str):
+                        parts.append(f'''
+                            <div class="link-item">
+                                <strong>{self._escape_html(text)}</strong><br>
+                                <span class="link-url">{self._escape_html(href)}</span>
+                            </div>
+                        ''')
+                        valid_links += 1
+                except Exception as e:
+                    self.logger.debug(f"Error processing link: {e}")
+                    continue
+                    
+            if valid_links == 0:
+                return ""  # Don't show empty links section
+                    
+            if len(links) > 20:
+                parts.append(f'<div class="link-item"><em>... and {len(links) - 20} more links</em></div>')
+                
+            parts.append('</div>')
+            return '\n'.join(parts)
+            
+        except Exception as e:
+            self.logger.warning(f"Error formatting links: {e}")
+            return ""
 
     def _generate_document_footer(self) -> str:
         """Generate document footer."""
@@ -553,13 +686,134 @@ class PDFGenerator:
                    .replace('"', '&quot;')
                    .replace("'", '&#x27;'))
 
+    def _validate_page_data(self, page_data: Dict[str, Any]) -> bool:
+        """Validate that page data contains required fields and is not corrupted."""
+        try:
+            # Check essential fields exist
+            if not isinstance(page_data, dict):
+                return False
+                
+            # Must have URL
+            url = page_data.get('url', '')
+            if not url or not isinstance(url, str):
+                return False
+                
+            # Must have some content (either text or html_content)
+            text = page_data.get('text', '')
+            html_content = page_data.get('html_content', '')
+            
+            if not text and not html_content:
+                return False
+                
+            # If html_content exists, validate it's reasonable
+            if html_content:
+                if not isinstance(html_content, str):
+                    return False
+                # Basic HTML structure check
+                if len(html_content.strip()) == 0:
+                    return False
+                    
+            # Check metadata is properly structured
+            metadata = page_data.get('metadata', {})
+            if metadata and not isinstance(metadata, dict):
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.logger.warning(f"Error validating page data: {e}")
+            return False
+
+    def _sanitize_html_content(self, html_content: str) -> str:
+        """Sanitize and repair HTML content to ensure it's valid."""
+        try:
+            if not html_content or not isinstance(html_content, str):
+                return ""
+                
+            # Parse and reconstruct HTML to fix malformed structure
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Remove any potentially problematic elements that might cause WeasyPrint issues
+            for element in soup.find_all():
+                # Remove elements with no content that might be causing issues
+                if not element.get_text(strip=True) and not element.find('img'):
+                    # But keep structural elements that might have styling
+                    if element.name not in ['div', 'span', 'p', 'section', 'article']:
+                        element.decompose()
+                        
+            # Ensure we return valid HTML string
+            sanitized = str(soup)
+            
+            # Final validation - if it's too short, it might be corrupted
+            if len(sanitized.strip()) < 10:
+                return ""
+                
+            return sanitized
+            
+        except Exception as e:
+            self.logger.warning(f"Error sanitizing HTML content: {e}")
+            return ""
+
+    def _generate_fallback_content(self, page_data: Dict[str, Any]) -> str:
+        """Generate fallback HTML content when primary html_content is invalid."""
+        try:
+            fallback_parts = []
+            
+            # Use text content if available
+            text = page_data.get('text', '')
+            if text:
+                # Convert text to basic HTML paragraphs
+                paragraphs = text.split('\n\n')
+                for paragraph in paragraphs:
+                    paragraph = paragraph.strip()
+                    if paragraph:
+                        fallback_parts.append(f'<p>{self._escape_html(paragraph)}</p>')
+                        
+            # Add headings if available
+            headings = page_data.get('headings', [])
+            if headings and isinstance(headings, list):
+                for heading in headings:
+                    if isinstance(heading, dict):
+                        level = heading.get('level', 1)
+                        text = heading.get('text', '')
+                        if text:
+                            fallback_parts.append(f'<h{level}>{self._escape_html(text)}</h{level}>')
+                            
+            # Add basic structure
+            if not fallback_parts:
+                fallback_parts.append('<p>Content could not be processed</p>')
+                
+            return '<div class="fallback-content">' + '\n'.join(fallback_parts) + '</div>'
+            
+        except Exception as e:
+            self.logger.warning(f"Error generating fallback content: {e}")
+            return '<div class="fallback-content"><p>Content unavailable</p></div>'
+
     def generate_pdf(self, scraped_data: List[Dict[str, Any]], base_url: str) -> str:
         """Generate PDF from scraped data."""
         try:
             self.logger.info("Generating PDF content...")
             
+            # Validate and filter scraped data
+            validated_data = []
+            skipped_count = 0
+            
+            for i, page_data in enumerate(scraped_data):
+                if self._validate_page_data(page_data):
+                    validated_data.append(page_data)
+                else:
+                    skipped_count += 1
+                    url = page_data.get('url', f'Page {i+1}') if isinstance(page_data, dict) else f'Page {i+1}'
+                    self.logger.warning(f"Skipping invalid page data: {url}")
+                    
+            if skipped_count > 0:
+                self.logger.info(f"Skipped {skipped_count} pages with invalid data. Processing {len(validated_data)} valid pages.")
+                
+            if not validated_data:
+                raise ValueError("No valid pages to generate PDF from")
+            
             # Generate HTML content
-            html_content = self._generate_html_content(scraped_data, base_url)
+            html_content = self._generate_html_content(validated_data, base_url)
             
             # Create temporary HTML file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp_file:
@@ -574,8 +828,33 @@ class PDFGenerator:
                 
                 self.logger.info(f"Converting to PDF: {output_path}")
                 
-                html_doc = HTML(filename=tmp_html_path)
-                html_doc.write_pdf(output_path, font_config=self.font_config)
+                # Validate the HTML file exists and has content
+                if not os.path.exists(tmp_html_path):
+                    raise FileNotFoundError(f"Temporary HTML file not found: {tmp_html_path}")
+                
+                file_size = os.path.getsize(tmp_html_path)
+                if file_size == 0:
+                    raise ValueError("Generated HTML file is empty")
+                    
+                self.logger.debug(f"HTML file size: {file_size} bytes")
+                
+                try:
+                    html_doc = HTML(filename=tmp_html_path)
+                    html_doc.write_pdf(output_path, font_config=self.font_config)
+                except Exception as weasy_error:
+                    # Log the specific WeasyPrint error and attempt recovery
+                    self.logger.error(f"WeasyPrint error: {weasy_error}")
+                    
+                    # Try to read and log part of the HTML for debugging
+                    try:
+                        with open(tmp_html_path, 'r', encoding='utf-8') as f:
+                            html_snippet = f.read(1000)  # First 1000 chars
+                            self.logger.debug(f"HTML content sample: {html_snippet}")
+                    except Exception:
+                        pass
+                    
+                    # Re-raise with more context
+                    raise Exception(f"PDF generation failed: {weasy_error}. Check HTML content validity.")
                 
                 self.logger.info(f"PDF generated successfully: {output_path}")
                 return output_path
