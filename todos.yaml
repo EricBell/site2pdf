@@ -1,6 +1,6 @@
 metadata:
   created: '2025-08-23T22:26:53.750048'
-  last_modified: '2025-08-23T22:29:08.332527'
+  last_modified: '2025-08-23T22:38:48.407161'
   version: '1.0'
 todos:
   45a9ef23:
@@ -33,6 +33,25 @@ todos:
     priority: medium
     category: general
     created: '2025-08-23T22:29:08.332516'
+    due_date: null
+    completed: null
+    notes: []
+  eaee040f:
+    description: pull out the version system into a package for easy reuse.
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-23T22:38:32.668504'
+    due_date: null
+    completed: null
+    notes: []
+  c299e3f4:
+    description: pull out the todo system, like the version system, and make apackage
+      out of it for easy reuse.
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-23T22:38:48.407131'
     due_date: null
     completed: null
     notes: []
