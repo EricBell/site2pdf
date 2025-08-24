@@ -262,8 +262,16 @@ class ContentExtractor:
 
     def _remove_unwanted_elements(self, soup: BeautifulSoup) -> None:
         """Remove unwanted elements from the soup."""
-        # Remove script and style elements
-        for element in soup(['script', 'style', 'nav', 'footer', 'header']):
+        # Remove script and style elements (always)
+        for element in soup(['script', 'style']):
+            element.decompose()
+            
+        # Remove menus and navigation elements (configurable)
+        if not self.config['content'].get('include_menus', False):
+            self._remove_menu_elements(soup)
+            
+        # Remove header and footer (always, as they're typically not main content)
+        for element in soup(['header', 'footer']):
             element.decompose()
             
         # Remove comments
@@ -272,14 +280,129 @@ class ContentExtractor:
             
         # Remove elements with common noise classes/ids
         noise_selectors = [
-            '.sidebar', '.advertisement', '.ads', '.banner',
+            '.advertisement', '.ads', '.banner',
             '.social-media', '.share', '.comments', '.related',
-            '#sidebar', '#ads', '#banner', '#social', '#comments'
+            '#ads', '#banner', '#social', '#comments'
         ]
+        
+        # Only add sidebar to noise selectors if menus are not being included
+        if not self.config['content'].get('include_menus', False):
+            noise_selectors.extend(['.sidebar', '#sidebar'])
         
         for selector in noise_selectors:
             for element in soup.select(selector):
                 element.decompose()
+
+    def _remove_menu_elements(self, soup: BeautifulSoup) -> None:
+        """Remove menu and navigation elements from the soup."""
+        # Remove semantic navigation elements
+        for element in soup(['nav']):
+            element.decompose()
+            
+        # Remove elements with navigation/menu roles
+        for element in soup.find_all(attrs={'role': ['navigation', 'menu', 'menubar']}):
+            element.decompose()
+            
+        # Common menu/navigation selectors
+        menu_selectors = [
+            # Class-based selectors
+            '.menu', '.nav', '.navigation', '.navbar', '.nav-menu',
+            '.main-menu', '.primary-menu', '.secondary-menu', '.site-menu',
+            '.menu-main', '.menu-primary', '.menu-secondary',
+            '.nav-primary', '.nav-secondary', '.nav-main',
+            '.sidebar-menu', '.left-menu', '.right-menu', '.top-menu',
+            '.breadcrumb', '.breadcrumbs',
+            # ID-based selectors  
+            '#menu', '#nav', '#navigation', '#navbar', '#main-menu',
+            '#primary-menu', '#secondary-menu', '#site-menu',
+            '#left-menu', '#right-menu', '#top-menu', '#main-nav',
+            # Structural selectors for common menu patterns
+            '.sidebar nav', '.header nav', '.main-header nav',
+            'aside nav'
+        ]
+        
+        for selector in menu_selectors:
+            for element in soup.select(selector):
+                element.decompose()
+                
+        # Heuristic-based menu detection
+        self._remove_heuristic_menus(soup)
+    
+    def _remove_heuristic_menus(self, soup: BeautifulSoup) -> None:
+        """Remove elements that appear to be menus based on heuristics."""
+        # Find list elements that might be menus
+        for list_elem in soup.find_all(['ul', 'ol']):
+            if self._is_likely_menu(list_elem):
+                list_elem.decompose()
+                
+        # Find div/section elements that might be menus
+        for container in soup.find_all(['div', 'section']):
+            if self._is_likely_menu_container(container):
+                container.decompose()
+                
+        # Handle aside elements specially (they often contain menus)
+        for aside in soup.find_all('aside'):
+            # Check if the aside primarily contains navigation links
+            links = aside.find_all('a')
+            text_length = len(aside.get_text().strip())
+            
+            # If it has many links and little content, it's likely a menu
+            if len(links) >= 3 and text_length < 500:
+                aside.decompose()
+    
+    def _is_likely_menu(self, element) -> bool:
+        """Determine if a list element is likely a menu."""
+        # Count list items
+        list_items = element.find_all('li', recursive=False)
+        if len(list_items) < 3:  # Too few items to be a typical menu
+            return False
+            
+        # Count links in list items
+        total_items = len(list_items)
+        items_with_links = 0
+        
+        for li in list_items:
+            if li.find('a'):
+                items_with_links += 1
+                
+        # If most items have links, it's likely a menu
+        link_ratio = items_with_links / total_items if total_items > 0 else 0
+        if link_ratio > 0.7:  # 70% or more items have links
+            return True
+            
+        # Check for menu-like text content
+        text_content = element.get_text().lower()
+        menu_keywords = [
+            'home', 'about', 'contact', 'services', 'products', 'blog',
+            'login', 'register', 'dashboard', 'profile', 'settings',
+            'getting started', 'documentation', 'guide', 'tutorial',
+            'overview', 'installation', 'configuration', 'api'
+        ]
+        
+        keyword_matches = sum(1 for keyword in menu_keywords if keyword in text_content)
+        if keyword_matches >= 3:  # Multiple menu-like keywords
+            return True
+            
+        return False
+    
+    def _is_likely_menu_container(self, element) -> bool:
+        """Determine if a container element is likely a menu."""
+        # Check class and id for menu indicators
+        classes = ' '.join(element.get('class', [])).lower()
+        element_id = element.get('id', '').lower()
+        
+        menu_indicators = ['menu', 'nav', 'navigation', 'sidebar', 'toc', 'table-of-contents']
+        
+        for indicator in menu_indicators:
+            if indicator in classes or indicator in element_id:
+                # Additional check: does it contain mostly links?
+                links = element.find_all('a')
+                text_length = len(element.get_text().strip())
+                
+                if len(links) >= 5 and text_length < 1000:  # Many links, not much content
+                    return True
+                    
+        return False
 
     def _process_html_content_with_images(self, soup: BeautifulSoup, url: str) -> str:
         """Process HTML content while preserving image positions and downloading images."""
@@ -327,14 +450,18 @@ class ContentExtractor:
             metadata = self._extract_metadata(soup, url) if self.config['content']['include_metadata'] else {}
             
             # Extract main text content
-            # Try to find main content area
-            main_content = (
-                soup.find('main') or 
-                soup.find('article') or 
-                soup.find('div', class_=re.compile(r'content|main|body', re.I)) or
-                soup.find('body') or
-                soup
-            )
+            # If including menus, use the whole body; otherwise find main content area
+            if self.config['content'].get('include_menus', False):
+                main_content = soup.find('body') or soup
+            else:
+                # Try to find main content area
+                main_content = (
+                    soup.find('main') or 
+                    soup.find('article') or 
+                    soup.find('div', class_=re.compile(r'content|main|body', re.I)) or
+                    soup.find('body') or
+                    soup
+                )
             
             # Process HTML content with inline images (NEW)
             html_content_with_images = self._process_html_content_with_images(main_content, url)

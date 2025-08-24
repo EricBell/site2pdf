@@ -49,6 +49,9 @@ content:
   # Extract and include page metadata
   include_metadata: true
   
+  # Include navigation menus in PDF (default: false)
+  include_menus: false
+  
   # Minimum content length to include page (characters)
   min_content_length: 100
 

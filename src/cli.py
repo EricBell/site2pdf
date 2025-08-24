@@ -45,6 +45,9 @@ from .preview import URLPreview
 @click.option('--load-approved', 
               type=click.Path(exists=True), 
               help='Load previously approved URLs from file')
+@click.option('--include-menus', 
+              is_flag=True, 
+              help='Include navigation menus in PDF output (default: exclude)')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -56,7 +59,8 @@ def scrape(base_url: str,
            preview: bool,
            exclude: tuple,
            save_approved: Optional[str],
-           load_approved: Optional[str]):
+           load_approved: Optional[str],
+           include_menus: bool):
     """
     Scrape a website and generate a PDF document.
     
@@ -78,6 +82,8 @@ def scrape(base_url: str,
             app_config['pdf']['output_filename'] = output
         if verbose:
             app_config['logging']['level'] = 'DEBUG'
+        if include_menus:
+            app_config['content']['include_menus'] = True
             
         # Setup logging
         logger = setup_logging(app_config['logging'])
