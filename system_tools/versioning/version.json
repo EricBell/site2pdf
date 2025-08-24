@@ -1,0 +1,9 @@
+{
+  "major": 1,
+  "minor": 0,
+  "patch": 1,
+  "file_hashes": {
+    "__init__.py": "870bfa6546bd4790f5ca5dee124731727a1033e6a6ce402bdc1f4c731f7a31c3",
+    "version_manager.py": "904e2edb93a5aa50d1cd02a3563fd811945de594e88adb1140c72388df786a68"
+  }
+}

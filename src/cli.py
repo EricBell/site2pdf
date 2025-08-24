@@ -6,14 +6,32 @@ from typing import Optional
 
 try:
     from .scraper import WebScraper
-    from .pdf_generator import PDFGenerator
     from .utils import load_config, setup_logging
     from .preview import URLPreview
 except ImportError:
     from scraper import WebScraper
-    from pdf_generator import PDFGenerator
     from utils import load_config, setup_logging
     from preview import URLPreview
+
+# Import from new package structure
+try:
+    # Try importing from project root (when run via run.py)
+    from generators.pdf import PDFGenerator
+except ImportError:
+    try:
+        # Try importing from parent directory (when run from src/)
+        import sys
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from generators.pdf import PDFGenerator
+    except ImportError:
+        # Fallback to old location during transition
+        try:
+            from .pdf_generator import PDFGenerator
+        except ImportError:
+            from pdf_generator import PDFGenerator
 
 
 @click.command()

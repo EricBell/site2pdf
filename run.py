@@ -7,10 +7,11 @@ Convenient entry point script in project root.
 import sys
 import os
 
-# Add src directory to Python path
+# Add src directory and project root to Python path  
 project_root = os.path.dirname(os.path.abspath(__file__))
 src_path = os.path.join(project_root, 'src')
-sys.path.insert(0, src_path)
+sys.path.insert(0, project_root)  # For generators and system_tools packages
+sys.path.insert(0, src_path)      # For src modules
 
 # Import and run the CLI
 from cli import main
