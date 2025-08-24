@@ -213,7 +213,10 @@ def scrape(base_url: str,
         click.echo(f"✅ Scraped {len(scraped_data)} pages")
         
         # Generate PDF
-        from .progress_tracker import ProgressTracker, Phase
+        try:
+            from .progress_tracker import ProgressTracker, Phase
+        except ImportError:
+            from progress_tracker import ProgressTracker, Phase
         progress = ProgressTracker(verbose=verbose)
         progress.start_phase(Phase.PDF_GENERATION, 1, "Creating PDF document")
         

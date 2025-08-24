@@ -9,29 +9,34 @@ import shutil
 from bs4 import BeautifulSoup
 
 try:
-    from ..import BaseGenerator, ContentValidator
+    # Try absolute import first
+    from generators import BaseGenerator, ContentValidator
 except ImportError:
-    # Fallback for standalone usage
-    from abc import ABC, abstractmethod
-    
-    class BaseGenerator(ABC):
-        def __init__(self, config: Dict[str, Any]):
-            self.config = config
-            self.logger = logging.getLogger(self.__class__.__name__)
+    try:
+        # Try relative import as fallback
+        from ..import BaseGenerator, ContentValidator
+    except ImportError:
+        # Final fallback for standalone usage
+        from abc import ABC, abstractmethod
         
-        @abstractmethod
-        def generate(self, scraped_data: List[Dict[str, Any]], output_path: str, **kwargs) -> bool:
-            pass
+        class BaseGenerator(ABC):
+            def __init__(self, config: Dict[str, Any]):
+                self.config = config
+                self.logger = logging.getLogger(self.__class__.__name__)
+            
+            @abstractmethod
+            def generate(self, scraped_data: List[Dict[str, Any]], output_path: str, **kwargs) -> bool:
+                pass
+            
+            @abstractmethod
+            def validate_config(self) -> bool:
+                pass
         
-        @abstractmethod
-        def validate_config(self) -> bool:
-            pass
-    
-    class ContentValidator:
-        @staticmethod
-        def validate_page_data(page_data: Dict[str, Any]) -> bool:
-            required_fields = ['url', 'text', 'title']
-            return all(field in page_data for field in required_fields)
+        class ContentValidator:
+            @staticmethod
+            def validate_page_data(page_data: Dict[str, Any]) -> bool:
+                required_fields = ['url', 'text', 'title']
+                return all(field in page_data for field in required_fields)
 
 
 class PDFGenerator(BaseGenerator):
