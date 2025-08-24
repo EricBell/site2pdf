@@ -31,6 +31,14 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - ⚙️ **Extensive Options**: Fine-tune crawling, delays, content filtering, and output
 - 🚫 **Menu Exclusion**: Configurable removal of navigation menus from PDFs
 
+### 💾 **Advanced Caching System**
+- 🗄️ **Session-Based Caching**: Automatic caching of scraped pages to prevent data loss
+- 🔄 **Resume Functionality**: Continue interrupted scraping sessions from where they left off
+- 🎯 **Preview Session Persistence**: Save and resume URL approval decisions across sessions
+- 📦 **Multi-Format Export**: Generate different output formats from cached data without re-scraping
+- 🧹 **Cache Management**: CLI commands for listing, cleaning, and managing cached sessions
+- ⚡ **Performance**: Avoid re-scraping when generating multiple output formats
+
 ### 📝 **Todo Management System**
 - 📋 **YAML-Based Storage**: All todos stored in structured `todos.yaml` format
 - 🎨 **Rich CLI Interface**: Beautiful icons, colors, and formatting
@@ -124,6 +132,9 @@ python run.py todo stats
 - `--save-approved`: Save approved URLs to file for reuse
 - `--load-approved`: Load previously approved URLs from file
 - `--include-menus`: Include navigation menus in output (default: exclude)
+- `--resume`: Resume from cached session ID
+- `--resume-preview`: Resume from cached preview session ID
+- `--from-cache`: Generate output from cached session (no scraping)
 
 #### Todo Management Commands (`python run.py todo <command>`)
 - `add <description>`: Add a new todo item
@@ -136,12 +147,31 @@ python run.py todo stats
 - `search <term>`: Search todos by text
 - `stats`: Show todo statistics
 
+#### Cache Management Commands (`python run.py cache <command>`)
+- `list`: List cached scraping sessions with filtering options
+- `clean`: Clean up old cache sessions
+- `stats`: Show cache statistics and usage information
+- `export <session_id>`: Export cached session data to different formats
+- `show <session_id>`: Show detailed information about a cached session
+- `delete <session_id>`: Delete a cached session
+- `previews`: List cached preview sessions
+
 #### Todo Options
 - `--priority, -p`: Set priority (low, medium, high, urgent)
 - `--due, -d`: Set due date (today, tomorrow, next week, YYYY-MM-DD)
 - `--category, -c`: Set category (bug, feature, documentation, etc.)
 - `--status, -s`: Set status (pending, in_progress, completed, cancelled)
 - `--completed`: Show completed todos in list
+
+#### Cache Management Options
+- `--status`: Filter sessions by status (active, completed, failed)
+- `--verbose, -v`: Show detailed session information
+- `--older-than`: Remove sessions older than specified time (e.g., 7d, 24h)
+- `--keep-completed`: Keep this many recent completed sessions
+- `--dry-run`: Show what would be cleaned without doing it
+- `--force`: Force deletion without confirmation
+- `--format, -f`: Output format for cache export (pdf, markdown, md)
+- `--output, -o`: Output filename for cache export
 
 ## Configuration
 
@@ -169,6 +199,16 @@ markdown:
   output_filename: "scraped_website.md"
   multi_file: false          # Single file vs multiple files
   include_toc: true          # Include table of contents
+
+cache:
+  enabled: true              # Enable caching system
+  directory: cache           # Cache directory location
+  compression: true          # Compress cached data
+  max_sessions: 100          # Maximum cached sessions
+  auto_cleanup: true         # Automatic cleanup of old sessions
+  cleanup_settings:
+    max_age_days: 30         # Auto-remove sessions older than this
+    keep_completed: 10       # Always keep recent completed sessions
 
 # ... see config.yaml for full options
 ```
@@ -202,6 +242,9 @@ site2pdf/
 │   ├── cli.py             # Click CLI interface
 │   ├── scraper.py         # Web scraping logic
 │   ├── extractor.py       # Content extraction
+│   ├── cache_manager.py   # Caching system for scraped content
+│   ├── cache_cli.py       # Cache management CLI commands
+│   ├── preview_cache.py   # Preview session persistence
 │   ├── todo_manager.py    # Todo management logic
 │   ├── todo_cli.py        # Todo CLI commands
 │   └── utils.py           # Utility functions
@@ -213,6 +256,9 @@ site2pdf/
 │       └── markdown_generator.py
 ├── system_tools/           # Reusable system utilities (NEW)
 │   └── versioning/        # Version management
+├── cache/                 # Cached scraping sessions and preview data
+│   ├── sessions/          # Scraped content cache by session ID
+│   └── previews/          # Preview session states
 ├── output/                # Generated files (PDF, Markdown)
 ├── temp/                  # Temporary files (images)
 └── logs/                  # Log files
@@ -423,6 +469,53 @@ content:
   include_menus: false          # Default: exclude menus for cleaner PDFs
 ```
 
+### 💾 Advanced Caching System
+Comprehensive caching system that prevents data loss and enables efficient workflows:
+
+**Core Features:**
+- 🗄️ **Session-Based Storage**: Each scraping run creates a unique cached session
+- 📦 **Incremental Saving**: Pages are cached immediately as they're scraped
+- 🔄 **Resume Capability**: Continue interrupted scraping from exact point of failure
+- 🎯 **Preview Persistence**: Save and restore URL approval decisions across sessions
+- ⚡ **Multi-Format Export**: Generate PDF, Markdown from cached data without re-scraping
+- 🧹 **Automatic Cleanup**: Configurable cleanup policies for old sessions
+
+**Cache Structure:**
+```
+cache/
+├── sessions/
+│   └── a1b2c3d4-5678-90ab-cdef-123456789012/
+│       ├── session.json        # Session metadata
+│       └── pages/              # Individual cached pages
+│           ├── page_001.json
+│           └── page_002.json
+└── previews/
+    └── b2c3d4e5-6789-01bc-def1-234567890123/
+        └── preview.json        # URL approval decisions
+```
+
+**Usage Examples:**
+```bash
+# Automatic caching during normal scraping
+python run.py scrape https://docs.example.com
+
+# Resume interrupted session
+python run.py scrape https://docs.example.com --resume a1b2c3d4
+
+# Generate different formats from cache
+python run.py scrape --from-cache a1b2c3d4 --format markdown
+python run.py scrape --from-cache a1b2c3d4 --format pdf
+
+# Preview session management
+python run.py scrape https://example.com --preview
+python run.py scrape https://example.com --resume-preview b2c3d4e5
+
+# Cache management
+python run.py cache list                      # View all sessions
+python run.py cache stats                     # Cache statistics
+python run.py cache clean --older-than 7d     # Cleanup old sessions
+```
+
 ### 🛡️ Robust PDF Generation
 Enhanced error handling and recovery for reliable PDF creation:
 
@@ -447,6 +540,9 @@ The application generates:
 - **Markdown Files**: Clean, structured markdown documents (--format markdown)
   - Single file: All content in one markdown document with TOC
   - Multi-file: Directory with README.md index and individual page files
+- **Cache Files**: Scraped content and preview sessions stored in `cache/`
+  - Session cache: Incremental page storage with metadata for resume capability
+  - Preview cache: URL approval decisions for session persistence
 - **Log Files**: Detailed crawling and processing logs in `logs/`
 - **Temporary Files**: Downloaded images stored in `temp/` during processing
 - **Todo Database**: YAML-based todo storage in `todos.yaml` (when using todo features)
@@ -504,6 +600,45 @@ python run.py todo add "Write API documentation" --priority low --due "next week
 python run.py todo list --status in_progress    # What you're working on
 python run.py todo list --due today            # Today's deadlines
 python run.py todo stats                       # Overall progress
+
+### Cache Management Examples
+
+#### Basic Cache Operations
+```bash
+# List all cached sessions
+python run.py cache list
+
+# View detailed cache statistics
+python run.py cache stats
+
+# Clean up old sessions (dry run first)
+python run.py cache clean --older-than 7d --dry-run
+python run.py cache clean --older-than 7d
+
+# Show specific session details
+python run.py cache show a1b2c3d4
+
+# Export cached data to different formats
+python run.py cache export a1b2c3d4 --format markdown --output cached-docs.md
+python run.py cache export a1b2c3d4 --format pdf
+```
+
+#### Resume and Cache Workflow
+```bash
+# Start scraping (creates cache automatically)
+python run.py scrape https://docs.example.com --max-pages 100
+
+# If interrupted, resume from cache
+python run.py scrape https://docs.example.com --resume a1b2c3d4
+
+# Generate different formats from cache without re-scraping
+python run.py scrape https://docs.example.com --from-cache a1b2c3d4 --format markdown
+python run.py scrape https://docs.example.com --from-cache a1b2c3d4 --format pdf
+
+# Preview with session persistence
+python run.py scrape https://docs.example.com --preview
+# ... make selections and exit
+python run.py scrape https://docs.example.com --resume-preview b2c3d4e5
 ```
 
 **🐛 Bug Tracking:**

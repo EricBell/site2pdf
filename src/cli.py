@@ -80,6 +80,12 @@ except ImportError:
               type=click.Choice(['pdf', 'markdown', 'md'], case_sensitive=False),
               default='pdf',
               help='Output format (pdf, markdown)')
+@click.option('--resume', 
+              help='Resume from cached session ID')
+@click.option('--resume-preview',
+              help='Resume from cached preview session ID')
+@click.option('--from-cache',
+              help='Generate output from cached session (no scraping)')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -93,7 +99,10 @@ def scrape(base_url: str,
            save_approved: Optional[str],
            load_approved: Optional[str],
            include_menus: bool,
-           format: str):
+           format: str,
+           resume: Optional[str],
+           resume_preview: Optional[str],
+           from_cache: Optional[str]):
     """
     Scrape a website and generate output document.
     
@@ -120,6 +129,10 @@ def scrape(base_url: str,
             
         # Setup logging
         logger = setup_logging(app_config['logging'])
+        
+        # Handle cache operations first
+        if from_cache:
+            return _handle_from_cache(from_cache, format, output, verbose, app_config)
         
         # Validate base URL
         if not base_url.startswith(('http://', 'https://')):
@@ -198,7 +211,8 @@ def scrape(base_url: str,
             # Scrape approved URLs
             if approved_urls:
                 click.echo(f"🚀 Starting to scrape {len(approved_urls)} approved URLs")
-                scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose)
+                scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
+                                   cache_session_id=resume)
                 try:
                     scraped_data = scraper.scrape_approved_urls(approved_urls)
                 finally:
@@ -209,7 +223,8 @@ def scrape(base_url: str,
         else:
             # Standard scraping mode
             click.echo(f"🚀 Starting to scrape: {base_url}")
-            scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose)
+            scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
+                               cache_session_id=resume)
             try:
                 scraped_data = scraper.scrape_website(base_url)
             finally:
@@ -260,23 +275,79 @@ def scrape(base_url: str,
         sys.exit(1)
 
 
+def _handle_from_cache(session_id: str, format: str, output: Optional[str], verbose: bool, app_config: dict):
+    """Generate output from cached session data without scraping."""
+    try:
+        from .cache_manager import CacheManager
+    except ImportError:
+        from cache_manager import CacheManager
+    
+    cache_manager = CacheManager(config=app_config)
+    
+    # Load session data
+    session_data = cache_manager.load_session(session_id)
+    if not session_data:
+        click.echo(f"❌ Session not found: {session_id}")
+        sys.exit(1)
+    
+    # Load cached pages
+    cached_pages = cache_manager.load_cached_pages(session_id)
+    if not cached_pages:
+        click.echo(f"❌ No cached pages found for session: {session_id}")
+        sys.exit(1)
+    
+    base_url = session_data.get('base_url', '')
+    click.echo(f"📦 Loading {len(cached_pages)} pages from cache session: {session_id[:8]}...")
+    
+    # Generate output based on format
+    try:
+        from .progress_tracker import ProgressTracker, Phase
+    except ImportError:
+        from progress_tracker import ProgressTracker, Phase
+    
+    progress = ProgressTracker(verbose=verbose)
+    
+    # Normalize format
+    format_lower = format.lower()
+    if format_lower == 'md':
+        format_lower = 'markdown'
+    
+    if format_lower == 'pdf':
+        progress.start_phase(Phase.PDF_GENERATION, 1, "Creating PDF from cached data")
+        generator = PDFGenerator(app_config)
+        output_path = generator.generate_pdf(cached_pages, base_url)
+        progress.finish_phase("PDF generated successfully from cache")
+        click.echo(f"🎉 PDF generated from cache: {output_path}")
+    
+    elif format_lower == 'markdown':
+        progress.start_phase(Phase.PDF_GENERATION, 1, "Creating Markdown from cached data")  # Reusing PDF phase for now
+        generator = MarkdownGenerator(app_config)
+        output_path = generator.generate(cached_pages, base_url, output=output)
+        progress.finish_phase("Markdown generated successfully from cache")
+        click.echo(f"🎉 Markdown generated from cache: {output_path}")
+    
+    progress.cleanup()
+
+
 # Import todo commands
 try:
     from .todo_cli import todo
+    from .cache_cli import cache
 except ImportError:
     from todo_cli import todo
+    from cache_cli import cache
 
 
 @click.group()
 def main():
-    """site2pdf - Convert websites to PDF documents with todo management."""
+    """site2pdf - Convert websites to PDF documents with caching, todo management, and multi-format output."""
     pass
 
 
-# Add the scrape command to the main group
+# Add command groups to the main group
 main.add_command(scrape)
-# Add the todo command group to the main group
 main.add_command(todo)
+main.add_command(cache)
 
 
 if __name__ == '__main__':

@@ -14,16 +14,18 @@ try:
     from .progress_tracker import ProgressTracker, Phase
     from .human_behavior import HumanBehaviorSimulator
     from .path_scoping import PathScopeManager
+    from .cache_manager import CacheManager
 except ImportError:
     from extractor import ContentExtractor
     from content_classifier import ContentClassifier, ContentType
     from progress_tracker import ProgressTracker, Phase
     from human_behavior import HumanBehaviorSimulator
     from path_scoping import PathScopeManager
+    from cache_manager import CacheManager
 
 
 class WebScraper:
-    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False):
+    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False, cache_session_id: str = None):
         self.config = config
         self.dry_run = dry_run
         self.verbose = verbose
@@ -39,6 +41,12 @@ class WebScraper:
         self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
         self.exclude_patterns = exclude_patterns or []
         self.path_scope: Optional[PathScopeManager] = None  # Initialized when we know the starting URL
+        
+        # Caching support
+        self.cache_enabled = config.get('cache', {}).get('enabled', True) and not dry_run
+        self.cache_manager = CacheManager(config=config) if self.cache_enabled else None
+        self.cache_session_id = cache_session_id
+        self.resume_mode = cache_session_id is not None
         
         # Configure session with human-like headers
         if self.human_behavior and config.get('human_behavior', {}).get('detection_avoidance', {}).get('realistic_headers', True):
@@ -295,6 +303,11 @@ class WebScraper:
             print(f"✅ Discovery complete: {len(discovered)} URLs found")
             
         discovered_list = sorted(list(discovered))
+        
+        # Save discovery results to cache if available
+        if self.cache_enabled and self.cache_manager and self.cache_session_id:
+            self.cache_manager.save_discovery_results(self.cache_session_id, discovered_list, classifications)
+            
         return discovered_list, classifications
 
     def scrape_approved_urls(self, approved_urls: Set[str]) -> List[Dict[str, Any]]:
@@ -342,7 +355,7 @@ class WebScraper:
         return scraped_data
 
     def scrape_website(self, base_url: str) -> List[Dict[str, Any]]:
-        """Scrape the entire website starting from base_url."""
+        """Scrape the entire website starting from base_url with caching support."""
         if self.dry_run:
             return []
             
@@ -358,7 +371,17 @@ class WebScraper:
         if not self._check_robots_txt(base_url):
             self.logger.error("Robots.txt disallows crawling this site")
             return []
-            
+        
+        # Handle caching and resume
+        if self.cache_enabled and self.cache_manager:
+            if self.resume_mode and self.cache_session_id:
+                # Resume from existing session
+                return self._resume_scraping(base_url)
+            else:
+                # Create new cache session
+                self.cache_session_id = self.cache_manager.create_session(base_url, self.config)
+                self.logger.info(f"Created cache session: {self.cache_session_id}")
+        
         scraped_data = []
         to_visit = [self._normalize_url(base_url)]
         self.visited_urls.clear()
@@ -367,7 +390,8 @@ class WebScraper:
         self.logger.info(f"Starting crawl of {base_url}")
         
         # Progress bar setup
-        pbar = tqdm(desc="Scraping pages", unit="pages")
+        session_info = f" [Session: {self.cache_session_id[:8]}...]" if self.cache_session_id else ""
+        pbar = tqdm(desc=f"Scraping: {self.base_domain}{session_info}", unit="pages")
         
         try:
             while (to_visit and 
@@ -397,6 +421,10 @@ class WebScraper:
                             content_data['depth'] = depth
                             scraped_data.append(content_data)
                             
+                            # Cache the page immediately after scraping
+                            if self.cache_enabled and self.cache_manager and self.cache_session_id:
+                                self.cache_manager.save_page(self.cache_session_id, content_data)
+                            
                             self.logger.info(f"Scraped: {url}")
                             
                             # Extract new links for next level
@@ -406,17 +434,128 @@ class WebScraper:
                         else:
                             self.logger.debug(f"Skipped (insufficient content): {url}")
                     
-                    # Respect rate limiting
-                    time.sleep(self.config['crawling']['request_delay'])
+                    # Human-like delay
+                    if self.human_behavior:
+                        delay = self.human_behavior.calculate_delay()
+                        time.sleep(delay)
+                    else:
+                        time.sleep(self.config['crawling']['request_delay'])
+                    
                     pbar.update(1)
                     
                 depth += 1
                 self.logger.info(f"Completed depth {depth}, found {len(scraped_data)} pages")
                 
+        except KeyboardInterrupt:
+            self.logger.info("Scraping interrupted by user")
+            # Mark session as incomplete but recoverable
+            if self.cache_enabled and self.cache_manager and self.cache_session_id:
+                self.logger.info(f"Session {self.cache_session_id} can be resumed later")
+            raise
         finally:
             pbar.close()
             
+        # Mark session as complete
+        if self.cache_enabled and self.cache_manager and self.cache_session_id:
+            self.cache_manager.mark_session_complete(self.cache_session_id)
+            
         self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
+        return scraped_data
+    
+    def _resume_scraping(self, base_url: str) -> List[Dict[str, Any]]:
+        """Resume scraping from cached session."""
+        if not self.cache_manager or not self.cache_session_id:
+            self.logger.error("Cannot resume: no cache manager or session ID")
+            return []
+        
+        self.logger.info(f"Resuming scraping session: {self.cache_session_id}")
+        
+        # Load cached session data
+        session_data = self.cache_manager.load_session(self.cache_session_id)
+        if not session_data:
+            self.logger.error(f"Session not found: {self.cache_session_id}")
+            return []
+        
+        # Load already scraped pages
+        cached_pages = self.cache_manager.load_cached_pages(self.cache_session_id)
+        self.logger.info(f"Found {len(cached_pages)} cached pages")
+        
+        # Check if we need to continue scraping or if session was complete
+        if session_data.get('status') == 'completed':
+            self.logger.info("Session already complete, returning cached pages")
+            return cached_pages
+        
+        # Get URLs that still need to be scraped
+        all_urls = session_data.get('urls_discovered', [])
+        if not all_urls:
+            # If no discovery data, try to discover URLs first
+            urls, classifications = self.discover_urls(base_url)
+            all_urls = urls
+            # Save discovery results to cache
+            self.cache_manager.save_discovery_results(self.cache_session_id, urls, classifications)
+        
+        remaining_urls = self.cache_manager.get_resume_urls(self.cache_session_id, all_urls)
+        
+        if not remaining_urls:
+            self.logger.info("No remaining URLs to scrape")
+            self.cache_manager.mark_session_complete(self.cache_session_id)
+            return cached_pages
+        
+        self.logger.info(f"Resuming scraping for {len(remaining_urls)} remaining URLs")
+        
+        # Continue scraping remaining URLs
+        scraped_data = cached_pages.copy()
+        self.visited_urls = set(page.get('url') for page in cached_pages)
+        
+        # Progress bar for resume
+        pbar = tqdm(desc=f"Resuming: {self.base_domain} [{self.cache_session_id[:8]}...]", 
+                   total=len(all_urls), initial=len(cached_pages), unit="pages")
+        
+        try:
+            for url in remaining_urls:
+                if len(scraped_data) >= self.config['crawling']['max_pages']:
+                    break
+                
+                pbar.set_description(f"Scraping: {url[:50]}...")
+                
+                html = self._fetch_page(url)
+                if html:
+                    # Extract content
+                    content_data = self.extractor.extract_content(html, url)
+                    
+                    if content_data and len(content_data.get('text', '')) >= self.config['content']['min_content_length']:
+                        content_data['url'] = url
+                        # Approximate depth based on URL structure
+                        content_data['depth'] = len(urlparse(url).path.strip('/').split('/'))
+                        scraped_data.append(content_data)
+                        
+                        # Cache the page immediately
+                        self.cache_manager.save_page(self.cache_session_id, content_data)
+                        
+                        self.logger.info(f"Scraped: {url}")
+                    else:
+                        self.logger.debug(f"Skipped (insufficient content): {url}")
+                
+                # Human-like delay
+                if self.human_behavior:
+                    delay = self.human_behavior.calculate_delay()
+                    time.sleep(delay)
+                else:
+                    time.sleep(self.config['crawling']['request_delay'])
+                
+                pbar.update(1)
+                
+        except KeyboardInterrupt:
+            self.logger.info("Resume scraping interrupted by user")
+            self.logger.info(f"Session {self.cache_session_id} can be resumed again later")
+            raise
+        finally:
+            pbar.close()
+        
+        # Mark session as complete
+        self.cache_manager.mark_session_complete(self.cache_session_id)
+        
+        self.logger.info(f"Resume scraping completed. Total pages: {len(scraped_data)}")
         return scraped_data
     
     def cleanup(self):

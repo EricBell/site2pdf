@@ -8,21 +8,32 @@ import click
 try:
     from .content_classifier import ContentClassifier, ContentType
     from .path_scoping import PathScopeManager
+    from .preview_cache import PreviewCache
+    from .cache_manager import CacheManager
 except ImportError:
     from content_classifier import ContentClassifier, ContentType
     from path_scoping import PathScopeManager
+    from preview_cache import PreviewCache
+    from cache_manager import CacheManager
 
 
 class URLPreview:
-    """Handle URL discovery, preview, and interactive approval with content classification."""
+    """Handle URL discovery, preview, and interactive approval with content classification and caching."""
     
-    def __init__(self, exclude_patterns: List[str] = None, path_scope: Optional[PathScopeManager] = None):
+    def __init__(self, exclude_patterns: List[str] = None, path_scope: Optional[PathScopeManager] = None, 
+                 cache_manager: CacheManager = None, preview_session_id: str = None):
         self.exclude_patterns = exclude_patterns or []
         self.excluded_urls: Set[str] = set()
         self.approved_urls: Set[str] = set()
         self.classifier = ContentClassifier()
         self.url_classifications: Dict[str, ContentType] = {}
         self.path_scope = path_scope
+        
+        # Caching support
+        self.cache_manager = cache_manager
+        self.preview_cache = PreviewCache(cache_manager) if cache_manager else None
+        self.preview_session_id = preview_session_id
+        self.cache_enabled = cache_manager is not None
         
     def build_url_tree(self, urls: List[str], classifications: Dict[str, ContentType] = None) -> Dict[str, any]:
         """Build a hierarchical tree structure from URLs with classification."""
@@ -241,8 +252,16 @@ class URLPreview:
     
     def _exclude_path(self, tree: Dict, path: str):
         """Exclude all URLs under a given path."""
+        excluded_urls = []
         for domain, domain_data in tree.items():
-            self._exclude_urls_in_node(domain_data, path)
+            urls_excluded = self._exclude_urls_in_node(domain_data, path)
+            excluded_urls.extend(urls_excluded)
+        
+        # Save exclusions to cache if enabled
+        if self.cache_enabled and self.preview_cache and self.preview_session_id:
+            decisions = [{"url": url, "action": "exclude", "reason": f"excluded_path:{path}"} 
+                        for url in excluded_urls]
+            self.preview_cache.save_bulk_decisions(self.preview_session_id, decisions)
     
     def _include_path(self, tree: Dict, path: str):
         """Include all URLs under a given path."""
@@ -252,17 +271,28 @@ class URLPreview:
         
         for url in urls_to_include:
             self.excluded_urls.discard(url)
+        
+        # Save inclusions to cache if enabled
+        if self.cache_enabled and self.preview_cache and self.preview_session_id:
+            decisions = [{"url": url, "action": "approve", "reason": f"included_path:{path}"} 
+                        for url in urls_to_include]
+            self.preview_cache.save_bulk_decisions(self.preview_session_id, decisions)
     
-    def _exclude_urls_in_node(self, node: Dict, target_path: str):
+    def _exclude_urls_in_node(self, node: Dict, target_path: str) -> List[str]:
         """Recursively exclude URLs matching the target path."""
+        excluded_urls = []
+        
         for url in node['urls']:
             parsed = urlparse(url)
             url_path = parsed.netloc + parsed.path
             if target_path in url_path:
                 self.excluded_urls.add(url)
+                excluded_urls.append(url)
         
         for child_node in node.get('children', {}).values():
-            self._exclude_urls_in_node(child_node, target_path)
+            excluded_urls.extend(self._exclude_urls_in_node(child_node, target_path))
+        
+        return excluded_urls
     
     def _collect_urls_in_path(self, node: Dict, target_path: str, url_list: List[str]):
         """Recursively collect URLs matching the target path."""
@@ -455,3 +485,54 @@ class URLPreview:
             click.echo(f"🎯 Path Scoping: Disabled (all paths allowed)")
         
         click.echo()
+    
+    def save_preview_session(self, base_url: str, urls: List[str], classifications: Dict[str, ContentType] = None) -> str:
+        """Save preview session to cache."""
+        if not self.cache_enabled or not self.preview_cache:
+            return None
+        
+        if not self.preview_session_id:
+            # Create new preview session
+            self.preview_session_id = self.cache_manager._generate_session_id(base_url)
+            self.preview_cache.create_preview_session(
+                self.preview_session_id, base_url, self.cache_manager.config
+            )
+        
+        # Save discovery results
+        self.preview_cache.save_discovery_results(self.preview_session_id, urls, classifications)
+        
+        return self.preview_session_id
+    
+    def load_preview_session(self, session_id: str) -> bool:
+        """Load preview session from cache."""
+        if not self.cache_enabled or not self.preview_cache:
+            return False
+        
+        session_data = self.preview_cache.load_preview_session(session_id)
+        if not session_data:
+            return False
+        
+        # Restore preview state
+        self.preview_session_id = session_id
+        
+        # Load excluded/approved URLs
+        approval_state = session_data.get('approval_state', {})
+        excluded_urls = {url_info['url'] for url_info in approval_state.get('excluded', [])}
+        approved_urls = {url_info['url'] for url_info in approval_state.get('approved', [])}
+        
+        self.excluded_urls.update(excluded_urls)
+        self.approved_urls.update(approved_urls)
+        
+        return True
+    
+    def get_approved_urls_from_cache(self, session_id: str) -> Set[str]:
+        """Get approved URLs from cached preview session."""
+        if not self.cache_enabled or not self.preview_cache:
+            return set()
+        
+        return self.preview_cache.get_approved_urls(session_id)
+    
+    def mark_preview_complete(self):
+        """Mark preview session as complete."""
+        if self.cache_enabled and self.preview_cache and self.preview_session_id:
+            self.preview_cache.mark_preview_complete(self.preview_session_id)

@@ -21,6 +21,18 @@ directories:
   logs_dir: logs
   output_dir: output
   temp_dir: temp
+cache:
+  enabled: true
+  directory: cache
+  compression: true
+  compression_level: 6
+  max_sessions: 100
+  auto_cleanup: true
+  cleanup_settings:
+    max_age_days: 30
+    keep_completed: 10
+  save_frequency: 5
+  session_timeout_hours: 24
 filters:
   exclude_patterns:
   - .*\.pdf$
