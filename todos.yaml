@@ -1,0 +1,38 @@
+metadata:
+  created: '2025-08-23T22:26:53.750048'
+  last_modified: '2025-08-23T22:29:08.332527'
+  version: '1.0'
+todos:
+  45a9ef23:
+    description: "config param to capture all scraped pages into a folder. Naming\
+      \ convention or some other means allows the app \nto use the scraped pages to\
+      \ build/rebuild the pdf later. this way if there's a problem in the pdf/markdown\
+      \ generation, \nthe source material is available and won't need to be scrapped\
+      \ again."
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-23T22:28:28.962081'
+    due_date: null
+    completed: null
+    notes: []
+  cda2d0b1:
+    description: Save the final/pruned preview to a file. Then allow it to be loaded
+      and start the scaping and/or rebuild from scaped/saved pages
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-23T22:28:49.708027'
+    due_date: null
+    completed: null
+    notes: []
+  fb0a0cf7:
+    description: separaate the output to a module. This way there's a pdf output module,
+      a markdown module, an xml module in time, etc.
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-23T22:29:08.332516'
+    due_date: null
+    completed: null
+    notes: []

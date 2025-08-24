@@ -13,11 +13,11 @@ src_path = os.path.join(project_root, 'src')
 sys.path.insert(0, src_path)
 
 # Import and run the CLI
-from cli import scrape
+from cli import main
 
 if __name__ == '__main__':
     try:
-        scrape()
+        main()
     except KeyboardInterrupt:
         print("\n⚠️  Application interrupted by user")
         sys.exit(1)

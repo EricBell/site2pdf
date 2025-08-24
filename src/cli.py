@@ -4,10 +4,16 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from .scraper import WebScraper
-from .pdf_generator import PDFGenerator
-from .utils import load_config, setup_logging
-from .preview import URLPreview
+try:
+    from .scraper import WebScraper
+    from .pdf_generator import PDFGenerator
+    from .utils import load_config, setup_logging
+    from .preview import URLPreview
+except ImportError:
+    from scraper import WebScraper
+    from pdf_generator import PDFGenerator
+    from utils import load_config, setup_logging
+    from preview import URLPreview
 
 
 @click.command()
@@ -212,5 +218,24 @@ def scrape(base_url: str,
         sys.exit(1)
 
 
+# Import todo commands
+try:
+    from .todo_cli import todo
+except ImportError:
+    from todo_cli import todo
+
+
+@click.group()
+def main():
+    """site2pdf - Convert websites to PDF documents with todo management."""
+    pass
+
+
+# Add the scrape command to the main group
+main.add_command(scrape)
+# Add the todo command group to the main group
+main.add_command(todo)
+
+
 if __name__ == '__main__':
-    scrape()
+    main()

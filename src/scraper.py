@@ -8,13 +8,16 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 import re
 
-from .extractor import ContentExtractor
-from .content_classifier import ContentClassifier, ContentType
-from .progress_tracker import ProgressTracker, Phase
 try:
+    from .extractor import ContentExtractor
+    from .content_classifier import ContentClassifier, ContentType
+    from .progress_tracker import ProgressTracker, Phase
     from .human_behavior import HumanBehaviorSimulator
     from .path_scoping import PathScopeManager
 except ImportError:
+    from extractor import ContentExtractor
+    from content_classifier import ContentClassifier, ContentType
+    from progress_tracker import ProgressTracker, Phase
     from human_behavior import HumanBehaviorSimulator
     from path_scoping import PathScopeManager
 

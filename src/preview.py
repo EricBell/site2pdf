@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import List, Set, Dict, Optional, Tuple
 from urllib.parse import urlparse, unquote
 import click
-from .content_classifier import ContentClassifier, ContentType
 try:
+    from .content_classifier import ContentClassifier, ContentType
     from .path_scoping import PathScopeManager
 except ImportError:
+    from content_classifier import ContentClassifier, ContentType
     from path_scoping import PathScopeManager
 
 
