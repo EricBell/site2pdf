@@ -74,19 +74,19 @@ def list(status, verbose):
             return
         
         if verbose:
-            click.echo(f"{'='*80}")
-            click.echo(f"{'SESSION ID':<20} {'URL':<35} {'STATUS':<12} {'PAGES':<12} {'SIZE':<8} {'LAST MODIFIED'}")
-            click.echo(f"{'='*80}")
+            click.echo(f"{'='*120}")
+            click.echo(f"{'SESSION ID':<65} {'URL':<35} {'STATUS':<8} {'PAGES':<8} {'LAST MODIFIED'}")
+            click.echo(f"{'='*120}")
             
             for session in sessions:
-                session_id = session['session_id'][:18] + '...' if len(session['session_id']) > 20 else session['session_id']
+                session_id = session['session_id']  # Show full session ID
                 url = session['base_url'][:33] + '...' if len(session['base_url']) > 35 else session['base_url']
                 status_display = session.get('status', 'unknown')
                 pages = f"{session.get('pages_scraped', 0)}/{session.get('pages_total', 0)}"
                 size = format_size(session.get('cache_size', 0))
                 modified = format_time_ago(session.get('last_modified', ''))
                 
-                click.echo(f"{session_id:<20} {url:<35} {status_display:<12} {pages:<12} {size:<8} {modified}")
+                click.echo(f"{session_id:<65} {url:<35} {status_display:<8} {pages:<8} {modified}")
         else:
             click.echo("┌─────────────────────────────────────────────────────────────────┐")
             click.echo("│                        Cached Sessions                          │")

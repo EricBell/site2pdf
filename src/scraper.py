@@ -379,7 +379,7 @@ class WebScraper:
         
         # Mark session as completed
         if self.cache_enabled and self.cache_manager and self.cache_session_id:
-            self.cache_manager.mark_session_completed(self.cache_session_id, len(scraped_data))
+            self.cache_manager.mark_session_complete(self.cache_session_id)
             
         self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
         return scraped_data
@@ -466,7 +466,7 @@ class WebScraper:
                     
                     # Human-like delay
                     if self.human_behavior:
-                        delay = self.human_behavior.calculate_delay()
+                        delay = self.human_behavior.calculate_delay(url, ContentType.CONTENT)
                         time.sleep(delay)
                     else:
                         time.sleep(self.config['crawling']['request_delay'])
@@ -568,7 +568,7 @@ class WebScraper:
                 
                 # Human-like delay
                 if self.human_behavior:
-                    delay = self.human_behavior.calculate_delay()
+                    delay = self.human_behavior.calculate_delay(url, ContentType.CONTENT)
                     time.sleep(delay)
                 else:
                     time.sleep(self.config['crawling']['request_delay'])

@@ -462,7 +462,7 @@ class MarkdownGenerator(BaseGenerator):
         content_parts.append("\n---\n")
         
         # Add page content
-        page_start_num = sum(len(summary['chunks'][i]['pages']) for i in range(chunk_num - 1)) + 1
+        page_start_num = sum(summary['chunks'][i]['pages'] for i in range(chunk_num - 1)) + 1
         for i, page_data in enumerate(chunk_data):
             page_num = page_start_num + i
             page_md = self._build_page_markdown(page_data, page_num, include_header=True)

@@ -567,6 +567,8 @@ Automatically split large outputs into manageable chunks for better LLM compatib
 - **PDF**: Generates complete, standalone documents per chunk (when implemented)
 - **Index Generation**: Creates master index file linking all chunks
 
+> **✅ Recent Fix**: Chunking functionality has been fully stabilized. Previous issues with chunk generation have been resolved.
+
 **Configuration:**
 ```yaml
 chunking:
@@ -678,8 +680,11 @@ python run.py todo stats                       # Overall progress
 
 #### Basic Cache Operations
 ```bash
-# List all cached sessions
+# List all cached sessions (compact view)
 python run.py cache list
+
+# List with full session IDs for copying
+python run.py cache list --verbose
 
 # View detailed cache statistics
 python run.py cache stats
@@ -688,12 +693,12 @@ python run.py cache stats
 python run.py cache clean --older-than 7d --dry-run
 python run.py cache clean --older-than 7d
 
-# Show specific session details
-python run.py cache show a1b2c3d4
+# Show specific session details (use full session ID from --verbose list)
+python run.py cache show kidshealth_org_20250825_142311_f5a68c0723278959253278c1bae02ecd
 
 # Export cached data to different formats
-python run.py cache export a1b2c3d4 --format markdown --output cached-docs.md
-python run.py cache export a1b2c3d4 --format pdf
+python run.py cache export kidshealth_org_20250825_142311_f5a68c0723278959253278c1bae02ecd --format markdown --output cached-docs.md
+python run.py cache export kidshealth_org_20250825_142311_f5a68c0723278959253278c1bae02ecd --format pdf
 ```
 
 #### Resume and Cache Workflow
@@ -701,17 +706,19 @@ python run.py cache export a1b2c3d4 --format pdf
 # Start scraping (creates cache automatically)
 python run.py scrape https://docs.example.com --max-pages 100
 
-# If interrupted, resume from cache
-python run.py scrape https://docs.example.com --resume a1b2c3d4
+# If interrupted, find your session ID and resume
+python run.py cache list --verbose
+python run.py scrape https://docs.example.com --resume docs_example_com_20250825_142311_abc123
 
 # Generate different formats from cache without re-scraping
-python run.py scrape https://docs.example.com --from-cache a1b2c3d4 --format markdown
-python run.py scrape https://docs.example.com --from-cache a1b2c3d4 --format pdf
+python run.py scrape dummy-url --from-cache docs_example_com_20250825_142311_abc123 --format markdown
+python run.py scrape dummy-url --from-cache docs_example_com_20250825_142311_abc123 --format pdf
 
 # Preview with session persistence
 python run.py scrape https://docs.example.com --preview
-# ... make selections and exit
-python run.py scrape https://docs.example.com --resume-preview b2c3d4e5
+# ... make selections and exit, then list preview sessions
+python run.py cache previews --verbose
+python run.py scrape https://docs.example.com --resume-preview docs_example_com_preview_20250825_142311_xyz789
 ```
 
 **🐛 Bug Tracking:**
@@ -766,6 +773,21 @@ python run.py todo stats
 - 🚫 Filters out admin and login pages
 - 📊 Reasonable default limits
 - 🔒 Handles HTTP errors gracefully
+
+## Recent Fixes & Improvements
+
+### Bug Fixes (Latest)
+- **✅ Fixed Chunking Generation Error**: Resolved `object of type 'int' has no len()` error during markdown chunk generation
+- **✅ Fixed Human Behavior Delays**: Added missing URL and content_type parameters to `calculate_delay()` method calls
+- **✅ Fixed Cache Session Management**: Corrected method name from `mark_session_completed` to `mark_session_complete`
+- **✅ Enhanced Cache CLI**: Full session IDs now displayed in verbose mode for better session management
+- **✅ Fixed ContentType Serialization**: Resolved preview cache errors with ContentType enum handling
+
+### Improvements
+- **📊 Better Error Reporting**: More detailed error messages for debugging
+- **🔍 Enhanced Cache Visibility**: Full session IDs available in `cache list --verbose`
+- **⚡ Improved Chunk Performance**: Optimized chunk generation for large websites
+- **🛡️ Robust Session Recovery**: Better handling of interrupted scraping sessions
 
 ## Troubleshooting
 
