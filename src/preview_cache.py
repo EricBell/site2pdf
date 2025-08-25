@@ -419,11 +419,13 @@ class PreviewCache:
             preview_dir = self.previews_dir / session_id
             discovery_file = preview_dir / "discovery.json"
             
-            if not discovery_file.exists():
+            # Use cache manager's _load_json which handles compression automatically
+            try:
+                discovery_data = self.cache_manager._load_json(discovery_file)
+            except FileNotFoundError:
                 self.logger.warning(f"No discovery data found for session: {session_id}")
                 return None
             
-            discovery_data = self.cache_manager._load_json(discovery_file)
             if not discovery_data:
                 return None
             
