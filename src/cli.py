@@ -2,7 +2,7 @@ import click
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 try:
     from .scraper import WebScraper
@@ -378,6 +378,64 @@ def scrape(base_url: str,
         sys.exit(1)
 
 
+def _post_process_cached_images(cached_pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Post-process cached pages to remove images and replace with text placeholders."""
+    from bs4 import BeautifulSoup, NavigableString, Tag
+    import re
+    
+    def get_image_description(img_tag: Tag) -> str:
+        """Extract descriptive text for an image from various sources."""
+        # Try different sources for image description
+        alt_text = img_tag.get('alt', '').strip()
+        title_text = img_tag.get('title', '').strip()
+        src = img_tag.get('src', '')
+        
+        # Use alt text if available and meaningful
+        if alt_text and len(alt_text) > 2:
+            return alt_text
+        
+        # Use title text if available and meaningful
+        if title_text and len(title_text) > 2:
+            return title_text
+        
+        # Try to extract filename from src
+        if src:
+            try:
+                filename = src.split('/')[-1].split('?')[0]  # Remove query params
+                name_part = filename.split('.')[0]  # Remove extension
+                # Clean up filename (replace common separators with spaces)
+                name_part = re.sub(r'[-_]', ' ', name_part)
+                if len(name_part) > 2 and not name_part.isdigit():
+                    return name_part
+            except:
+                pass
+        
+        return "image"
+    
+    processed_pages = []
+    
+    for page_data in cached_pages:
+        # Create a copy of the page data
+        processed_page = page_data.copy()
+        
+        # Process html_content if it exists
+        html_content = page_data.get('html_content', '')
+        if html_content:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Find and replace all images
+            for img_tag in soup.find_all('img'):
+                description = get_image_description(img_tag)
+                placeholder_text = f"[image: {description} removed]"
+                img_tag.replace_with(NavigableString(placeholder_text))
+            
+            processed_page['html_content'] = str(soup)
+        
+        processed_pages.append(processed_page)
+    
+    return processed_pages
+
+
 def _handle_from_cache(session_id: str, format: str, output: Optional[str], verbose: bool, app_config: dict,
                       chunk_size: Optional[str], chunk_pages: Optional[int], chunk_prefix: Optional[str]):
     """Generate output from cached session data without scraping."""
@@ -399,6 +457,11 @@ def _handle_from_cache(session_id: str, format: str, output: Optional[str], verb
     if not cached_pages:
         click.echo(f"❌ No cached pages found for session: {session_id}")
         sys.exit(1)
+    
+    # Post-process cached pages for image removal if requested
+    if app_config.get('content', {}).get('remove_images', False):
+        cached_pages = _post_process_cached_images(cached_pages)
+        click.echo(f"🖼️ Processed {len(cached_pages)} cached pages to remove images")
     
     base_url = session_data.get('base_url', '')
     click.echo(f"📦 Loading {len(cached_pages)} pages from cache session: {session_id[:8]}...")
