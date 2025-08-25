@@ -94,6 +94,11 @@ class CacheManager:
     
     def _load_json(self, filepath: Path) -> Any:
         """Load JSON data with automatic compression detection"""
+        # If the filepath already ends with .gz, read it as compressed
+        if str(filepath).endswith('.gz'):
+            with gzip.open(filepath, 'rt', encoding='utf-8') as f:
+                return json.load(f)
+        
         # Try compressed version first
         compressed_path = Path(f"{filepath}.gz")
         if compressed_path.exists():
@@ -275,10 +280,7 @@ class CacheManager:
                 return cached_pages
             
             for page_file in pages_dir.glob("*.json*"):
-                if page_file.stem.endswith('.json'):
-                    # Skip .json.gz files, they'll be handled by the .gz check
-                    continue
-                    
+                # Process both .json and .json.gz files
                 try:
                     page_data = self._load_json(page_file)
                     cached_pages.append(page_data)

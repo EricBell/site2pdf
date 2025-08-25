@@ -148,7 +148,8 @@ def scrape(base_url: str,
         
         # Handle cache operations first
         if from_cache:
-            return _handle_from_cache(from_cache, format, output, verbose, app_config)
+            return _handle_from_cache(from_cache, format, output, verbose, app_config, 
+                                    chunk_size, chunk_pages, chunk_prefix)
         
         # Validate base URL
         if not base_url.startswith(('http://', 'https://')):
@@ -377,7 +378,8 @@ def scrape(base_url: str,
         sys.exit(1)
 
 
-def _handle_from_cache(session_id: str, format: str, output: Optional[str], verbose: bool, app_config: dict):
+def _handle_from_cache(session_id: str, format: str, output: Optional[str], verbose: bool, app_config: dict,
+                      chunk_size: Optional[str], chunk_pages: Optional[int], chunk_prefix: Optional[str]):
     """Generate output from cached session data without scraping."""
     try:
         from .cache_manager import CacheManager
@@ -424,9 +426,31 @@ def _handle_from_cache(session_id: str, format: str, output: Optional[str], verb
     elif format_lower == 'markdown':
         progress.start_phase(Phase.PDF_GENERATION, 1, "Creating Markdown from cached data")  # Reusing PDF phase for now
         generator = MarkdownGenerator(app_config)
-        output_path = generator.generate(cached_pages, base_url, output=output)
+        
+        # Check if chunking is requested
+        if chunk_size or chunk_pages:
+            if not generator.supports_chunking():
+                click.echo("⚠️  Warning: Chunking not supported for markdown format, generating single file")
+                output_path = generator.generate(cached_pages, base_url, output=output)
+                click.echo(f"🎉 Markdown generated from cache: {output_path}")
+            else:
+                output_paths = generator.generate_chunked(
+                    cached_pages, base_url, 
+                    chunk_size=chunk_size, 
+                    chunk_pages=chunk_pages,
+                    chunk_prefix=chunk_prefix,
+                    output=output
+                )
+                click.echo(f"🎉 Chunked markdown generated from cache: {len(output_paths)} files")
+                for path in output_paths[:3]:  # Show first 3 files
+                    click.echo(f"   📄 {path}")
+                if len(output_paths) > 3:
+                    click.echo(f"   ... and {len(output_paths) - 3} more files")
+        else:
+            output_path = generator.generate(cached_pages, base_url, output=output)
+            click.echo(f"🎉 Markdown generated from cache: {output_path}")
+        
         progress.finish_phase("Markdown generated successfully from cache")
-        click.echo(f"🎉 Markdown generated from cache: {output_path}")
     
     progress.cleanup()
 
