@@ -1,6 +1,6 @@
 metadata:
   created: '2025-08-23T22:26:53.750048'
-  last_modified: '2025-08-24T21:22:16.931759'
+  last_modified: '2025-08-25T10:28:00.202281'
   version: '1.0'
 todos:
   fb0a0cf7:
@@ -39,6 +39,16 @@ todos:
     priority: medium
     category: general
     created: '2025-08-24T21:22:16.931747'
+    due_date: null
+    completed: null
+    notes: []
+  ed55868e:
+    description: scraping from the top landing page, even with depth of 2, it may
+      not find child pages - it should
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-25T10:28:00.202269'
     due_date: null
     completed: null
     notes: []

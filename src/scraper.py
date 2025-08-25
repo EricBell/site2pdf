@@ -315,13 +315,34 @@ class WebScraper:
         if self.dry_run:
             return []
         
+        # Handle caching and resume
+        if self.cache_enabled and self.cache_manager:
+            if self.resume_mode and self.cache_session_id:
+                # Resume from existing session - check what we already have
+                cached_pages = self.cache_manager.load_cached_pages(self.cache_session_id)
+                if cached_pages:
+                    cached_urls = {page.get('url') for page in cached_pages}
+                    remaining_urls = approved_urls - cached_urls
+                    if remaining_urls:
+                        self.logger.info(f"Resuming session {self.cache_session_id[:8]}... - {len(remaining_urls)} URLs remaining")
+                        approved_urls = remaining_urls
+                    else:
+                        self.logger.info(f"All URLs already cached in session {self.cache_session_id[:8]}...")
+                        return cached_pages
+            else:
+                # Create new cache session - use first URL as base URL for session naming
+                base_url = next(iter(approved_urls)) if approved_urls else "approved_urls"
+                self.cache_session_id = self.cache_manager.create_session(base_url, self.config)
+                self.logger.info(f"Created cache session: {self.cache_session_id}")
+        
         scraped_data = []
         total_urls = len(approved_urls)
         
         self.logger.info(f"Starting to scrape {total_urls} approved URLs")
         
         # Progress bar setup
-        pbar = tqdm(total=total_urls, desc="Scraping approved URLs", unit="pages")
+        session_info = f" [Session: {self.cache_session_id[:8]}...]" if self.cache_session_id else ""
+        pbar = tqdm(total=total_urls, desc=f"Scraping approved URLs{session_info}", unit="pages")
         
         try:
             for url in approved_urls:
@@ -335,6 +356,11 @@ class WebScraper:
                     if content_data and len(content_data.get('text', '')) >= self.config['content']['min_content_length']:
                         content_data['url'] = url
                         scraped_data.append(content_data)
+                        
+                        # Cache the page immediately after scraping
+                        if self.cache_enabled and self.cache_manager and self.cache_session_id:
+                            self.cache_manager.save_page(self.cache_session_id, content_data)
+                        
                         self.logger.info(f"Scraped: {url}")
                     else:
                         self.logger.debug(f"Skipped (insufficient content): {url}")
@@ -351,6 +377,10 @@ class WebScraper:
         finally:
             pbar.close()
         
+        # Mark session as completed
+        if self.cache_enabled and self.cache_manager and self.cache_session_id:
+            self.cache_manager.mark_session_completed(self.cache_session_id, len(scraped_data))
+            
         self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
         return scraped_data
 
