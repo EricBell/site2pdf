@@ -355,7 +355,8 @@ def delete(session_id, force):
 @cache.command()
 @click.option('--status', type=click.Choice(['in_progress', 'completed', 'abandoned']),
               help='Filter preview sessions by status')
-def previews(status):
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information including full session IDs')
+def previews(status, verbose):
     """List cached preview sessions."""
     try:
         cache_manager = CacheManager()
@@ -367,12 +368,17 @@ def previews(status):
             click.echo(f"No{status_text} preview sessions found.")
             return
         
-        click.echo("┌─────────────────────────────────────────────────────────────────┐")
-        click.echo("│                      Preview Sessions                           │")
-        click.echo("├─────────────────────────────────────────────────────────────────┤")
+        if verbose:
+            click.echo("┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐")
+            click.echo("│                                                  Preview Sessions                                                           │")
+            click.echo("├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤")
+        else:
+            click.echo("┌─────────────────────────────────────────────────────────────────┐")
+            click.echo("│                      Preview Sessions                           │")
+            click.echo("├─────────────────────────────────────────────────────────────────┤")
         
         for session in sessions:
-            session_id = session['session_id'][:8]
+            session_id = session['session_id'] if verbose else session['session_id'][:8]
             url_parts = session['base_url'].replace('https://', '').replace('http://', '')
             url_display = url_parts[:25] + '...' if len(url_parts) > 28 else url_parts
             
@@ -386,9 +392,15 @@ def previews(status):
             urls_info = f"{approved}A/{excluded}E/{discovered}T"
             modified = format_time_ago(session.get('last_modified', ''))
             
-            click.echo(f"│ {session_id:<8} {url_display:<28} {urls_info:<12} {modified:<8} {status_icon} │")
+            if verbose:
+                click.echo(f"│ {session_id:<50} {url_display:<28} {urls_info:<12} {modified:<8} {status_icon} │")
+            else:
+                click.echo(f"│ {session_id:<8} {url_display:<28} {urls_info:<12} {modified:<8} {status_icon} │")
         
-        click.echo("└─────────────────────────────────────────────────────────────────┘")
+        if verbose:
+            click.echo("└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘")
+        else:
+            click.echo("└─────────────────────────────────────────────────────────────────┘")
         click.echo("A=Approved, E=Excluded, T=Total")
         
     except Exception as e:

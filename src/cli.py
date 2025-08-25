@@ -166,7 +166,7 @@ def scrape(base_url: str,
             return
         
         # Handle preview mode with interactive approval
-        if preview or load_approved:
+        if preview or load_approved or resume_preview:
             approved_urls = set()
             
             if load_approved:
@@ -177,18 +177,45 @@ def scrape(base_url: str,
                     click.echo("No approved URLs loaded. Switching to discovery mode.")
                     preview = True
             
+            if resume_preview:
+                # Load cached preview session
+                try:
+                    from .cache_manager import CacheManager
+                except ImportError:
+                    from cache_manager import CacheManager
+                try:
+                    from .preview_cache import PreviewCache
+                except ImportError:
+                    from preview_cache import PreviewCache
+                    
+                cache_manager = CacheManager(config=app_config)
+                preview_cache = PreviewCache(cache_manager)
+                approved_urls = preview_cache.get_approved_urls(resume_preview)
+                if not approved_urls:
+                    click.echo("No approved URLs found in cached preview. Switching to discovery mode.")
+                    preview = True
+            
             if preview or not approved_urls:
                 click.echo(f"🔍 Discovering URLs from: {base_url}")
                 scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
                 try:
                     discovered_urls, classifications = scraper.discover_urls(base_url)
                     
-                    # Create preview with path scope information
-                    url_preview = URLPreview(exclude_patterns, scraper.path_scope)
+                    # Create preview with path scope information and cache support
+                    try:
+                        from .cache_manager import CacheManager
+                    except ImportError:
+                        from cache_manager import CacheManager
+                    cache_manager = CacheManager(config=app_config)
+                    url_preview = URLPreview(exclude_patterns, scraper.path_scope, 
+                                           cache_manager=cache_manager, preview_session_id=resume_preview)
                     
                     if not discovered_urls:
                         click.echo("❌ No URLs discovered. Check the URL and try again.")
                         sys.exit(1)
+                    
+                    # Save preview session with discovered URLs
+                    url_preview.save_preview_session(base_url, discovered_urls, classifications)
                     
                     # Build tree with classifications and interactive approval
                     tree = url_preview.build_url_tree(discovered_urls, classifications)

@@ -74,3 +74,4 @@ Pipfile.lock
 .mypy_cache/
 .dmypy.json
 dmypy.json
+cache/

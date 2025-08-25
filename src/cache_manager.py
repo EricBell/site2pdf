@@ -42,8 +42,14 @@ class CacheManager:
         self.previews_dir.mkdir(exist_ok=True)
         
         self.logger = logging.getLogger(__name__)
-        self.compression_enabled = self.cache_config.get('compression', {}).get('enabled', True)
-        self.compression_level = self.cache_config.get('compression', {}).get('level', 6)
+        # Handle compression config - can be boolean or dict
+        compression_config = self.cache_config.get('compression', True)
+        if isinstance(compression_config, bool):
+            self.compression_enabled = compression_config
+            self.compression_level = self.cache_config.get('compression_level', 6)
+        else:
+            self.compression_enabled = compression_config.get('enabled', True)
+            self.compression_level = compression_config.get('level', 6)
     
     def _generate_session_id(self, base_url: str, config_hash: str = None) -> str:
         """Generate unique session ID based on URL and timestamp"""
