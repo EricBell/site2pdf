@@ -2,7 +2,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Set, Dict, Optional, Tuple
+from typing import List, Set, Dict, Optional, Tuple, Any
 from urllib.parse import urlparse, unquote
 import click
 try:
@@ -486,7 +486,8 @@ class URLPreview:
         
         click.echo()
     
-    def save_preview_session(self, base_url: str, urls: List[str], classifications: Dict[str, ContentType] = None) -> str:
+    def save_preview_session(self, base_url: str, urls: List[str], classifications: Dict[str, ContentType] = None, 
+                           discovery_params: Dict[str, Any] = None) -> str:
         """Save preview session to cache."""
         if not self.cache_enabled or not self.preview_cache:
             return None
@@ -499,7 +500,7 @@ class URLPreview:
             )
         
         # Save discovery results
-        self.preview_cache.save_discovery_results(self.preview_session_id, urls, classifications)
+        self.preview_cache.save_discovery_results(self.preview_session_id, urls, classifications, discovery_params)
         
         return self.preview_session_id
     

@@ -178,7 +178,7 @@ def scrape(base_url: str,
                     preview = True
             
             if resume_preview:
-                # Load cached preview session
+                # Load cached discovery results
                 try:
                     from .cache_manager import CacheManager
                 except ImportError:
@@ -190,10 +190,41 @@ def scrape(base_url: str,
                     
                 cache_manager = CacheManager(config=app_config)
                 preview_cache = PreviewCache(cache_manager)
+                
+                # First try to get approved URLs (if session was completed)
                 approved_urls = preview_cache.get_approved_urls(resume_preview)
-                if not approved_urls:
-                    click.echo("No approved URLs found in cached preview. Switching to discovery mode.")
-                    preview = True
+                
+                if approved_urls:
+                    # Session was completed, use approved URLs directly
+                    click.echo(f"📦 Loading {len(approved_urls)} approved URLs from cached preview session: {resume_preview[:8]}...")
+                else:
+                    # Session was not completed, load cached discovery results for re-approval
+                    cached_discovery = preview_cache.load_discovery_results(resume_preview)
+                    if cached_discovery:
+                        click.echo(f"📦 Loading {cached_discovery['total_urls']} discovered URLs from cached preview session: {resume_preview[:8]}...")
+                        
+                        # Create preview with cached discovery results - skip URL discovery
+                        url_preview = URLPreview(exclude_patterns, None,  # path_scope will be set if needed
+                                               cache_manager=cache_manager, preview_session_id=resume_preview)
+                        
+                        # Build tree directly from cached data
+                        tree = url_preview.build_url_tree(cached_discovery['urls'], cached_discovery['classifications'])
+                        approved_urls = url_preview.interactive_exclude(tree)
+                        
+                        if approved_urls is None:  # User quit
+                            sys.exit(0)
+                        
+                        # Final approval
+                        if not url_preview.final_approval(approved_urls):
+                            click.echo("Scraping cancelled.")
+                            sys.exit(0)
+                            
+                        # Save approved URLs if requested
+                        if save_approved:
+                            url_preview.save_approved_urls(approved_urls, save_approved)
+                    else:
+                        click.echo("No cached discovery results found in preview session. Switching to discovery mode.")
+                        preview = True
             
             if preview or not approved_urls:
                 click.echo(f"🔍 Discovering URLs from: {base_url}")
@@ -214,8 +245,16 @@ def scrape(base_url: str,
                         click.echo("❌ No URLs discovered. Check the URL and try again.")
                         sys.exit(1)
                     
-                    # Save preview session with discovered URLs
-                    url_preview.save_preview_session(base_url, discovered_urls, classifications)
+                    # Save preview session with discovered URLs and parameters
+                    discovery_params = {
+                        'max_depth': max_depth,
+                        'max_pages': max_pages,
+                        'delay': delay,
+                        'exclude_patterns': list(exclude_patterns) if exclude_patterns else [],
+                        'include_menus': include_menus,
+                        'verbose': verbose
+                    }
+                    url_preview.save_preview_session(base_url, discovered_urls, classifications, discovery_params)
                     
                     # Build tree with classifications and interactive approval
                     tree = url_preview.build_url_tree(discovered_urls, classifications)

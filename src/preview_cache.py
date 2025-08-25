@@ -100,7 +100,53 @@ class PreviewCache:
             self.logger.error(f"Failed to create preview session: {e}")
             raise
     
-    def save_discovery_results(self, session_id: str, urls: List[str], classifications: Dict[str, Any] = None) -> bool:
+    def _serialize_classifications(self, classifications: Dict[str, Any]) -> Dict[str, str]:
+        """Convert ContentType enums to strings for JSON serialization."""
+        if not classifications:
+            return {}
+        
+        serialized = {}
+        for url, content_type in classifications.items():
+            if hasattr(content_type, 'value'):
+                # ContentType enum - use the value
+                serialized[url] = content_type.value
+            elif hasattr(content_type, 'name'):
+                # ContentType enum - use the name
+                serialized[url] = content_type.name
+            else:
+                # Already a string or other serializable type
+                serialized[url] = str(content_type)
+        return serialized
+    
+    def _deserialize_classifications(self, classifications: Dict[str, str]) -> Dict[str, Any]:
+        """Convert classification strings back to ContentType enums."""
+        if not classifications:
+            return {}
+        
+        try:
+            from .content_classifier import ContentType
+        except ImportError:
+            from content_classifier import ContentType
+        
+        deserialized = {}
+        for url, classification_str in classifications.items():
+            # Try to find matching ContentType by value or name
+            content_type = None
+            for ct in ContentType:
+                if ct.value == classification_str or ct.name == classification_str:
+                    content_type = ct
+                    break
+            
+            if content_type:
+                deserialized[url] = content_type
+            else:
+                # Fallback to string if no matching enum found
+                deserialized[url] = classification_str
+        
+        return deserialized
+
+    def save_discovery_results(self, session_id: str, urls: List[str], classifications: Dict[str, Any] = None, 
+                             discovery_params: Dict[str, Any] = None) -> bool:
         """
         Save URL discovery results for preview.
         
@@ -108,6 +154,7 @@ class PreviewCache:
             session_id: Preview session ID
             urls: Discovered URLs
             classifications: URL classifications
+            discovery_params: Discovery parameters (max_depth, max_pages, etc.)
             
         Returns:
             True if saved successfully
@@ -117,12 +164,13 @@ class PreviewCache:
             if not preview_dir.exists():
                 return False
             
-            # Save discovery data
+            # Save discovery data (serialize ContentType enums)
             discovery_data = {
                 "discovered_at": datetime.now().isoformat(),
                 "urls": urls,
-                "classifications": classifications or {},
-                "total_urls": len(urls)
+                "classifications": self._serialize_classifications(classifications),
+                "total_urls": len(urls),
+                "discovery_params": discovery_params or {}
             }
             
             self.cache_manager._save_json(preview_dir / "discovery.json", discovery_data)
@@ -355,6 +403,40 @@ class PreviewCache:
             
         except Exception as e:
             self.logger.error(f"Failed to load preview session: {e}")
+            return None
+    
+    def load_discovery_results(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load discovery results from cached preview session.
+        
+        Args:
+            session_id: Preview session ID
+            
+        Returns:
+            Dictionary with 'urls' and 'classifications' or None if not found
+        """
+        try:
+            preview_dir = self.previews_dir / session_id
+            discovery_file = preview_dir / "discovery.json"
+            
+            if not discovery_file.exists():
+                self.logger.warning(f"No discovery data found for session: {session_id}")
+                return None
+            
+            discovery_data = self.cache_manager._load_json(discovery_file)
+            if not discovery_data:
+                return None
+            
+            return {
+                'urls': discovery_data.get('urls', []),
+                'classifications': self._deserialize_classifications(discovery_data.get('classifications', {})),
+                'total_urls': discovery_data.get('total_urls', 0),
+                'discovered_at': discovery_data.get('discovered_at'),
+                'discovery_params': discovery_data.get('discovery_params', {})
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load discovery results for session {session_id}: {e}")
             return None
     
     def get_approved_urls(self, session_id: str) -> Set[str]:
