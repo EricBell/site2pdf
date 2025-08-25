@@ -404,37 +404,89 @@ class ContentExtractor:
                     
         return False
 
+    def _get_image_description(self, img_tag: Tag) -> str:
+        """Extract descriptive text for an image from various sources."""
+        # Try different sources for image description
+        alt_text = img_tag.get('alt', '').strip()
+        title_text = img_tag.get('title', '').strip()
+        src = img_tag.get('src', '')
+        
+        # Use alt text if available and meaningful
+        if alt_text and len(alt_text) > 2:
+            return alt_text
+        
+        # Use title text if available and meaningful
+        if title_text and len(title_text) > 2:
+            return title_text
+        
+        # Try to extract filename from src
+        if src:
+            try:
+                filename = src.split('/')[-1].split('?')[0]  # Remove query params
+                name_part = filename.split('.')[0]  # Remove extension
+                # Clean up filename (replace common separators with spaces)
+                name_part = re.sub(r'[-_]', ' ', name_part)
+                if len(name_part) > 2 and not name_part.isdigit():
+                    return name_part
+            except:
+                pass
+        
+        # Look for nearby captions or descriptive text
+        parent = img_tag.parent
+        if parent:
+            # Check for figure captions
+            figcaption = parent.find('figcaption')
+            if figcaption:
+                caption_text = self._clean_text(figcaption.get_text()).strip()
+                if caption_text and len(caption_text) > 2:
+                    return caption_text
+        
+        return "image"
+
     def _process_html_content_with_images(self, soup: BeautifulSoup, url: str) -> str:
         """Process HTML content while preserving image positions and downloading images."""
+        # Check if image removal is enabled
+        remove_images = self.config.get('content', {}).get('remove_images', False)
+        
         # Find and process all images in the HTML
         for img_tag in soup.find_all('img'):
-            src = img_tag.get('src')
-            if src:
-                # Download the image
-                local_path = self._download_image(src, url)
-                if local_path and os.path.exists(local_path):
-                    # Convert to data URL for embedding
-                    with open(local_path, 'rb') as f:
-                        import base64
-                        img_data_b64 = base64.b64encode(f.read()).decode()
+            if remove_images:
+                # Replace image with text placeholder
+                description = self._get_image_description(img_tag)
+                placeholder_text = f"[image: {description} removed]"
+                
+                # Create a new text node to replace the image
+                from bs4 import NavigableString
+                img_tag.replace_with(NavigableString(placeholder_text))
+            else:
+                # Original image processing logic
+                src = img_tag.get('src')
+                if src:
+                    # Download the image
+                    local_path = self._download_image(src, url)
+                    if local_path and os.path.exists(local_path):
+                        # Convert to data URL for embedding
+                        with open(local_path, 'rb') as f:
+                            import base64
+                            img_data_b64 = base64.b64encode(f.read()).decode()
+                            
+                        ext = local_path.split('.')[-1].lower()
+                        mime_type = {
+                            'jpg': 'image/jpeg',
+                            'jpeg': 'image/jpeg', 
+                            'png': 'image/png',
+                            'gif': 'image/gif',
+                            'webp': 'image/webp'
+                        }.get(ext, 'image/jpeg')
                         
-                    ext = local_path.split('.')[-1].lower()
-                    mime_type = {
-                        'jpg': 'image/jpeg',
-                        'jpeg': 'image/jpeg', 
-                        'png': 'image/png',
-                        'gif': 'image/gif',
-                        'webp': 'image/webp'
-                    }.get(ext, 'image/jpeg')
-                    
-                    data_url = f"data:{mime_type};base64,{img_data_b64}"
-                    
-                    # Update the img tag with the data URL and add styling
-                    img_tag['src'] = data_url
-                    img_tag['style'] = 'max-width: 100%; height: auto; display: inline-block; margin: 10px 0;'
-                else:
-                    # Remove broken image tags
-                    img_tag.decompose()
+                        data_url = f"data:{mime_type};base64,{img_data_b64}"
+                        
+                        # Update the img tag with the data URL and add styling
+                        img_tag['src'] = data_url
+                        img_tag['style'] = 'max-width: 100%; height: auto; display: inline-block; margin: 10px 0;'
+                    else:
+                        # Remove broken image tags
+                        img_tag.decompose()
         
         return str(soup)
 

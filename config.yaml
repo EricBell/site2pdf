@@ -8,6 +8,7 @@ content:
   include_images: true
   include_menus: false
   include_metadata: true
+  remove_images: false
   max_image_size: 10
   min_content_length: 100
 crawling:

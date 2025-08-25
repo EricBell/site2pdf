@@ -20,7 +20,7 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 ### 📄 **Multi-Format Output Generation**
 - 📖 **PDF Generation**: Professional PDFs with documentation focus
 - 📝 **Markdown Export**: Clean, structured markdown with HTML-to-markdown conversion
-- 🖼️ **Image Embedding**: Downloads and includes images with proper formatting
+- 🖼️ **Flexible Image Handling**: Download/embed images OR replace with descriptive text for LLM compatibility
 - 📚 **Table of Contents**: Automatic TOC generation with page/anchor links
 - 🎨 **Professional Layout**: Clean, readable formatting with proper structure
 - 📁 **Multi-File Support**: Single document or individual files per page
@@ -139,6 +139,7 @@ python run.py todo stats
 - `--chunk-size`: Maximum file size per chunk (e.g., "5MB", "10MB")
 - `--chunk-pages`: Maximum number of pages per chunk
 - `--chunk-prefix`: Custom prefix for chunk filenames
+- `--remove-images`: Replace images with text placeholders for LLM compatibility
 
 #### Todo Management Commands (`python run.py todo <command>`)
 - `add <description>`: Add a new todo item
@@ -191,7 +192,8 @@ crawling:
 
 content:
   include_menus: false        # Exclude navigation menus
-  include_images: true
+  include_images: true        # Download and embed images
+  remove_images: false        # Replace images with text placeholders
   include_metadata: true
 
 pdf:
@@ -315,6 +317,27 @@ python run.py scrape https://docs.example.com --format markdown
 # Include menus for sites where navigation is important
 python run.py scrape https://docs.example.com --include-menus --format md
 ```
+
+#### Image Handling Examples
+```bash
+# Default behavior - include images (downloads and embeds images)
+python run.py scrape https://docs.example.com --format markdown
+
+# Remove images for LLM processing - replaces with descriptive text
+python run.py scrape https://docs.example.com --format markdown --remove-images
+
+# Perfect for LLM analysis - combines chunking with image removal
+python run.py scrape https://docs.example.com --format markdown --remove-images --chunk-size 5MB
+
+# Works with PDF format too
+python run.py scrape https://docs.example.com --format pdf --remove-images
+```
+
+**Image Replacement Examples:**
+- `<img alt="Dashboard screenshot">` → `[image: Dashboard screenshot removed]`
+- `<img src="logo.png" title="Company Logo">` → `[image: Company Logo removed]`
+- `<img src="diagram-workflow.jpg">` → `[image: diagram workflow removed]`
+- `<img src="photo123.jpg">` → `[image removed]`
 
 #### Markdown-Specific Examples
 ```bash
@@ -782,6 +805,10 @@ python run.py todo stats
 - **✅ Fixed Cache Session Management**: Corrected method name from `mark_session_completed` to `mark_session_complete`
 - **✅ Enhanced Cache CLI**: Full session IDs now displayed in verbose mode for better session management
 - **✅ Fixed ContentType Serialization**: Resolved preview cache errors with ContentType enum handling
+
+### New Features
+- **🖼️ Image Removal for LLM Compatibility**: New `--remove-images` flag replaces images with descriptive text placeholders
+- **🎯 Smart Image Description**: Extracts meaningful descriptions from alt text, titles, filenames, and captions
 
 ### Improvements
 - **📊 Better Error Reporting**: More detailed error messages for debugging

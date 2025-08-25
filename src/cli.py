@@ -93,6 +93,9 @@ except ImportError:
               help='Maximum number of pages per chunk')
 @click.option('--chunk-prefix',
               help='Custom prefix for chunk filenames (defaults to base filename)')
+@click.option('--remove-images',
+              is_flag=True,
+              help='Replace images with text placeholders (e.g., "[image: alt text removed]")')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -112,7 +115,8 @@ def scrape(base_url: str,
            from_cache: Optional[str],
            chunk_size: Optional[str],
            chunk_pages: Optional[int],
-           chunk_prefix: Optional[str]):
+           chunk_prefix: Optional[str],
+           remove_images: bool):
     """
     Scrape a website and generate output document.
     
@@ -136,6 +140,8 @@ def scrape(base_url: str,
             app_config['logging']['level'] = 'DEBUG'
         if include_menus:
             app_config['content']['include_menus'] = True
+        if remove_images:
+            app_config['content']['remove_images'] = True
             
         # Setup logging
         logger = setup_logging(app_config['logging'])
