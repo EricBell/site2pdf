@@ -191,7 +191,7 @@ class PreviewCache:
             for url in urls:
                 url_info = {
                     "url": url,
-                    "title": classifications.get(url, {}).get('title', '') if classifications else '',
+                    "title": '',  # ContentType objects don't have title field
                     "content_type": str(classifications.get(url, 'unknown')) if classifications else 'unknown',
                     "discovered_at": datetime.now().isoformat()
                 }
