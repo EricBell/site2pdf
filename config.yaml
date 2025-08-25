@@ -33,6 +33,11 @@ cache:
     keep_completed: 10
   save_frequency: 5
   session_timeout_hours: 24
+chunking:
+  default_max_size: "10MB"
+  size_estimation:
+    markdown_overhead: 1.2
+    pdf_overhead: 2.5
 filters:
   exclude_patterns:
   - .*\.pdf$

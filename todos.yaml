@@ -1,6 +1,6 @@
 metadata:
   created: '2025-08-23T22:26:53.750048'
-  last_modified: '2025-08-25T10:28:00.202281'
+  last_modified: '2025-08-25T14:19:31.600272'
   version: '1.0'
 todos:
   fb0a0cf7:
@@ -32,16 +32,6 @@ todos:
     due_date: null
     completed: '2025-08-24T15:04:56.696712'
     notes: []
-  83b2dbf3:
-    description: after resuming preview, the output is always PDF even if the original
-      format spec was MARKDOWN
-    status: pending
-    priority: medium
-    category: general
-    created: '2025-08-24T21:22:16.931747'
-    due_date: null
-    completed: null
-    notes: []
   ed55868e:
     description: scraping from the top landing page, even with depth of 2, it may
       not find child pages - it should
@@ -49,6 +39,25 @@ todos:
     priority: medium
     category: general
     created: '2025-08-25T10:28:00.202269'
+    due_date: null
+    completed: null
+    notes: []
+  92dc3eb0:
+    description: chunk the pdf generator
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-25T14:18:52.108751'
+    due_date: null
+    completed: null
+    notes: []
+  639d4552:
+    description: I need a way to comm to Claude when creating a new generator,e.g.
+      epub, the entire interface including chunking
+    status: pending
+    priority: medium
+    category: general
+    created: '2025-08-25T14:19:31.600259'
     due_date: null
     completed: null
     notes: []

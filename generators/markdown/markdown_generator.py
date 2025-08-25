@@ -15,6 +15,14 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urljoin
 
 try:
+    from ...src.chunk_manager import ChunkManager
+except ImportError:
+    try:
+        from src.chunk_manager import ChunkManager
+    except ImportError:
+        from chunk_manager import ChunkManager
+
+try:
     from generators import BaseGenerator, ContentValidator
 except ImportError:
     try:
@@ -69,6 +77,7 @@ class MarkdownGenerator(BaseGenerator):
         self.output_dir = config.get('directories', {}).get('output_dir', 'output')
         self.markdown_config = config.get('markdown', {})
         self.content_config = config.get('content', {})
+        self.chunk_manager = ChunkManager(config)
         
     def validate_config(self) -> bool:
         """Validate markdown generator configuration"""
@@ -79,6 +88,10 @@ class MarkdownGenerator(BaseGenerator):
                 self.logger.error(f"Missing required config section: {section}")
                 return False
         
+        return True
+    
+    def supports_chunking(self) -> bool:
+        """Return whether this generator supports chunking."""
         return True
     
     def generate(self, scraped_data: List[Dict[str, Any]], base_url: str, **kwargs) -> str:
@@ -115,6 +128,83 @@ class MarkdownGenerator(BaseGenerator):
             return self._generate_multi_file(scraped_data, base_url)
         else:
             return self._generate_single_file(scraped_data, base_url, output_filename)
+    
+    def generate_chunked(self, scraped_data: List[Dict[str, Any]], base_url: str, 
+                        chunk_size: Optional[str] = None, chunk_pages: Optional[int] = None,
+                        chunk_prefix: Optional[str] = None, **kwargs) -> List[str]:
+        """
+        Generate chunked markdown files from scraped data.
+        
+        Args:
+            scraped_data: List of scraped page data
+            base_url: Base URL of the scraped site
+            chunk_size: Maximum size per chunk (e.g., '5MB')
+            chunk_pages: Maximum pages per chunk
+            chunk_prefix: Custom prefix for chunk filenames
+            **kwargs: Additional generation options
+            
+        Returns:
+            List[str]: Paths to generated markdown files
+        """
+        if not self.chunk_manager.should_chunk(chunk_size, chunk_pages):
+            # No chunking requested, use regular generation
+            output_path = self.generate(scraped_data, base_url, **kwargs)
+            return [output_path]
+        
+        # Basic validation
+        if not scraped_data or len(scraped_data) == 0:
+            raise ValueError("No scraped data provided")
+            
+        if not self.validate_config():
+            raise ValueError("Invalid configuration for markdown generation")
+        
+        self.logger.info(f"Starting chunked markdown generation for {len(scraped_data)} pages")
+        
+        # Chunk the data
+        chunks = self.chunk_manager.chunk_data(scraped_data, chunk_size, chunk_pages, 'markdown')
+        
+        if len(chunks) == 1:
+            self.logger.info("Data fits in single chunk, generating single file")
+            output_path = self.generate(scraped_data, base_url, **kwargs)
+            return [output_path]
+        
+        # Generate chunk summary
+        summary = self.chunk_manager.generate_summary_info(chunks, 'markdown')
+        self.logger.info(f"Generating {summary['total_chunks']} markdown chunks")
+        
+        # Determine base filename
+        domain = urlparse(base_url).netloc.replace('www.', '').replace('.', '_')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = chunk_prefix if chunk_prefix else f"{domain}_{timestamp}"
+        
+        # Create output directory
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        generated_files = []
+        
+        # Generate individual chunk files
+        for i, chunk in enumerate(chunks, 1):
+            chunk_filename = self.chunk_manager.generate_chunk_filename(
+                base_filename, i, len(chunks), 'md', chunk_prefix
+            )
+            chunk_path = os.path.join(self.output_dir, chunk_filename)
+            
+            # Generate chunk content
+            chunk_content = self._build_chunk_content(chunk, base_url, i, len(chunks), summary)
+            
+            # Write chunk file
+            with open(chunk_path, 'w', encoding='utf-8') as f:
+                f.write(chunk_content)
+            
+            generated_files.append(chunk_path)
+            self.logger.info(f"Generated chunk {i}/{len(chunks)}: {chunk_path}")
+        
+        # Generate index file
+        index_path = self._generate_chunk_index(chunks, base_url, base_filename, summary)
+        generated_files.insert(0, index_path)  # Put index first
+        
+        self.logger.info(f"Chunked markdown generation complete: {len(generated_files)} files generated")
+        return generated_files
     
     def _generate_single_file(self, scraped_data: List[Dict[str, Any]], base_url: str, output_filename: Optional[str] = None) -> str:
         """Generate a single markdown file with all content"""
@@ -339,3 +429,92 @@ class MarkdownGenerator(BaseGenerator):
         filename = re.sub(r'\s+', '_', filename)
         filename = filename[:100]  # Limit length
         return filename.strip('_')
+    
+    def _build_chunk_content(self, chunk_data: List[Dict[str, Any]], base_url: str, 
+                           chunk_num: int, total_chunks: int, summary: Dict[str, Any]) -> str:
+        """Build markdown content for a single chunk"""
+        domain = urlparse(base_url).netloc
+        
+        content_parts = []
+        
+        # Add chunk header
+        content_parts.append(f"# {domain} - Part {chunk_num} of {total_chunks}")
+        content_parts.append(f"\n**Source:** {base_url}")
+        content_parts.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        content_parts.append(f"**Chunk:** {chunk_num} of {total_chunks}")
+        content_parts.append(f"**Pages in this chunk:** {len(chunk_data)}")
+        
+        # Add navigation info
+        if chunk_num > 1:
+            prev_filename = self.chunk_manager.generate_chunk_filename(
+                f"{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}", 
+                chunk_num - 1, total_chunks, 'md'
+            )
+            content_parts.append(f"**Previous:** [{prev_filename}](./{prev_filename})")
+        
+        if chunk_num < total_chunks:
+            next_filename = self.chunk_manager.generate_chunk_filename(
+                f"{domain}_{datetime.now().strftime('%Y%m%d_%H%M%S')}", 
+                chunk_num + 1, total_chunks, 'md'
+            )
+            content_parts.append(f"**Next:** [{next_filename}](./{next_filename})")
+        
+        content_parts.append("\n---\n")
+        
+        # Add page content
+        page_start_num = sum(len(summary['chunks'][i]['pages']) for i in range(chunk_num - 1)) + 1
+        for i, page_data in enumerate(chunk_data):
+            page_num = page_start_num + i
+            page_md = self._build_page_markdown(page_data, page_num, include_header=True)
+            content_parts.append(page_md)
+            content_parts.append("\n---\n")
+        
+        return "\n".join(content_parts)
+    
+    def _generate_chunk_index(self, chunks: List[List[Dict[str, Any]]], base_url: str, 
+                            base_filename: str, summary: Dict[str, Any]) -> str:
+        """Generate index file for chunks"""
+        domain = urlparse(base_url).netloc
+        index_filename = f"{base_filename}_INDEX.md"
+        index_path = os.path.join(self.output_dir, index_filename)
+        
+        content_parts = []
+        content_parts.append(f"# {domain} - Complete Documentation Index")
+        content_parts.append(f"\n**Source:** {base_url}")
+        content_parts.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        content_parts.append(f"**Total Pages:** {summary['total_pages']}")
+        content_parts.append(f"**Total Chunks:** {summary['total_chunks']}")
+        content_parts.append("\n## Document Structure\n")
+        content_parts.append("This documentation has been split into multiple files for easier handling:\n")
+        
+        # List all chunks
+        for i, chunk_info in enumerate(summary['chunks'], 1):
+            chunk_filename = self.chunk_manager.generate_chunk_filename(
+                base_filename, i, summary['total_chunks'], 'md'
+            )
+            content_parts.append(f"{i}. [{chunk_filename}](./{chunk_filename})")
+            content_parts.append(f"   - Pages: {chunk_info['pages']}")
+            content_parts.append(f"   - Estimated size: {chunk_info['estimated_size_human']}")
+        
+        content_parts.append("\n## All Pages\n")
+        
+        # List all pages with their chunk locations
+        page_num = 1
+        for chunk_i, chunk in enumerate(chunks, 1):
+            chunk_filename = self.chunk_manager.generate_chunk_filename(
+                base_filename, chunk_i, len(chunks), 'md'
+            )
+            for page_data in chunk:
+                title = page_data.get('metadata', {}).get('title', f'Page {page_num}')
+                url = page_data.get('url', '')
+                content_parts.append(f"{page_num}. [{title}](./{chunk_filename}) - {url}")
+                page_num += 1
+        
+        index_content = "\n".join(content_parts)
+        
+        # Write index file
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(index_content)
+        
+        self.logger.info(f"Generated index file: {index_path}")
+        return index_path

@@ -54,6 +54,35 @@ class BaseGenerator(ABC):
     def get_supported_formats(self) -> List[str]:
         """Return list of supported output formats."""
         return []
+    
+    def supports_chunking(self) -> bool:
+        """Return whether this generator supports chunking.
+        
+        Returns:
+            bool: True if chunking is supported, False otherwise
+        """
+        return False
+    
+    def generate_chunked(self, scraped_data: List[Dict[str, Any]], base_url: str, 
+                        chunk_size: Optional[str] = None, chunk_pages: Optional[int] = None,
+                        chunk_prefix: Optional[str] = None, **kwargs) -> List[str]:
+        """Generate output with chunking support.
+        
+        Args:
+            scraped_data: List of scraped page data
+            base_url: Base URL of the scraped site
+            chunk_size: Maximum size per chunk (e.g., '5MB')
+            chunk_pages: Maximum pages per chunk
+            chunk_prefix: Custom prefix for chunk filenames
+            **kwargs: Generator-specific options
+            
+        Returns:
+            List[str]: Paths to generated files
+        """
+        # Default implementation - call regular generate method
+        output_path = kwargs.get('output', 'output')
+        success = self.generate(scraped_data, output_path, **kwargs)
+        return [output_path] if success else []
 
 
 class ContentValidator:

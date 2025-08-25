@@ -24,6 +24,7 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 📚 **Table of Contents**: Automatic TOC generation with page/anchor links
 - 🎨 **Professional Layout**: Clean, readable formatting with proper structure
 - 📁 **Multi-File Support**: Single document or individual files per page
+- 🧩 **Smart Chunking**: Split large outputs into manageable chunks by size or page count
 
 ### 🔧 **Powerful Configuration**
 - 🎮 **Interactive Preview**: Tree-view URL selection with approval system
@@ -135,6 +136,9 @@ python run.py todo stats
 - `--resume`: Resume from cached session ID
 - `--resume-preview`: Resume from cached preview session ID
 - `--from-cache`: Generate output from cached session (no scraping)
+- `--chunk-size`: Maximum file size per chunk (e.g., "5MB", "10MB")
+- `--chunk-pages`: Maximum number of pages per chunk
+- `--chunk-prefix`: Custom prefix for chunk filenames
 
 #### Todo Management Commands (`python run.py todo <command>`)
 - `add <description>`: Add a new todo item
@@ -210,6 +214,12 @@ cache:
     max_age_days: 30         # Auto-remove sessions older than this
     keep_completed: 10       # Always keep recent completed sessions
 
+chunking:
+  default_max_size: "10MB"   # Default chunk size for output files
+  size_estimation:
+    markdown_overhead: 1.2   # Size estimation multiplier for Markdown
+    pdf_overhead: 2.5        # Size estimation multiplier for PDF
+
 # ... see config.yaml for full options
 ```
 
@@ -242,6 +252,7 @@ site2pdf/
 │   ├── cli.py             # Click CLI interface
 │   ├── scraper.py         # Web scraping logic
 │   ├── extractor.py       # Content extraction
+│   ├── chunk_manager.py   # Output chunking and size estimation
 │   ├── cache_manager.py   # Caching system for scraped content
 │   ├── cache_cli.py       # Cache management CLI commands
 │   ├── preview_cache.py   # Preview session persistence
@@ -316,6 +327,31 @@ python run.py scrape https://example.com/docs --format markdown
 
 # Markdown with table of contents (default)
 python run.py scrape https://example.com/docs --format md --output documentation.md
+```
+
+#### Output Chunking Examples
+```bash
+# Split large output into 5MB chunks
+python run.py scrape https://example.com/docs --format markdown --chunk-size 5MB
+
+# Split by page count (25 pages per chunk)
+python run.py scrape https://example.com/docs --format markdown --chunk-pages 25
+
+# Custom chunk prefix for better organization
+python run.py scrape https://example.com/docs --format markdown --chunk-size 10MB --chunk-prefix "documentation"
+
+# Chunking works with PDF too (creates separate complete PDFs)
+python run.py scrape https://example.com/docs --format pdf --chunk-size 15MB
+
+# Size-based chunking takes precedence over page-based
+python run.py scrape https://example.com/docs --chunk-size 5MB --chunk-pages 50  # Uses size-based
+```
+
+**Output Files with Chunking:**
+- `documentation_chunk_001_of_003.md` - First chunk
+- `documentation_chunk_002_of_003.md` - Second chunk  
+- `documentation_chunk_003_of_003.md` - Third chunk
+- `documentation_INDEX.md` - Index file linking all chunks
 ```
 
 ### Todo Management Examples
@@ -516,6 +552,42 @@ python run.py cache stats                     # Cache statistics
 python run.py cache clean --older-than 7d     # Cleanup old sessions
 ```
 
+### 🧩 Smart Output Chunking
+Automatically split large outputs into manageable chunks for better LLM compatibility and file handling:
+
+**Chunking Features:**
+- 📏 **Size-Based Chunking**: Split by maximum file size (e.g., "5MB", "10MB")
+- 📄 **Page-Based Chunking**: Split by number of pages per chunk
+- 🎯 **Smart Size Estimation**: Format-specific overhead calculation for accurate splitting
+- 🔗 **Cross-References**: Index files and navigation links between chunks
+- 📋 **Sequential Naming**: Clear chunk ordering (`document_chunk_001_of_005.md`)
+
+**Format-Specific Behavior:**
+- **Markdown**: Creates sequential document parts with navigation links
+- **PDF**: Generates complete, standalone documents per chunk (when implemented)
+- **Index Generation**: Creates master index file linking all chunks
+
+**Configuration:**
+```yaml
+chunking:
+  default_max_size: "10MB"     # Default maximum chunk size
+  size_estimation:
+    markdown_overhead: 1.2     # Markdown formatting overhead
+    pdf_overhead: 2.5          # PDF generation overhead
+```
+
+**Usage Examples:**
+```bash
+# Chunk by file size
+python run.py scrape https://docs.example.com --chunk-size 5MB --format markdown
+
+# Chunk by page count  
+python run.py scrape https://docs.example.com --chunk-pages 50 --format markdown
+
+# Custom naming
+python run.py scrape https://docs.example.com --chunk-size 10MB --chunk-prefix "api-docs"
+```
+
 ### 🛡️ Robust PDF Generation
 Enhanced error handling and recovery for reliable PDF creation:
 
@@ -540,6 +612,7 @@ The application generates:
 - **Markdown Files**: Clean, structured markdown documents (--format markdown)
   - Single file: All content in one markdown document with TOC
   - Multi-file: Directory with README.md index and individual page files
+  - Chunked output: Multiple sequential markdown files with index and navigation
 - **Cache Files**: Scraped content and preview sessions stored in `cache/`
   - Session cache: Incremental page storage with metadata for resume capability
   - Preview cache: URL approval decisions for session persistence
@@ -681,6 +754,8 @@ python run.py todo stats
 - ✅ Preserved content structure and formatting
 - ✅ Links and images properly converted
 - ✅ Single-file or multi-file output modes
+- ✅ Smart chunking by size or page count for LLM compatibility
+- ✅ Cross-chunk navigation and index generation
 - ✅ GitHub-compatible markdown syntax
 - ✅ Configurable via YAML settings
 

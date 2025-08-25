@@ -86,6 +86,13 @@ except ImportError:
               help='Resume from cached preview session ID')
 @click.option('--from-cache',
               help='Generate output from cached session (no scraping)')
+@click.option('--chunk-size',
+              help='Maximum file size per chunk (e.g., "5MB", "10MB")')
+@click.option('--chunk-pages',
+              type=int,
+              help='Maximum number of pages per chunk')
+@click.option('--chunk-prefix',
+              help='Custom prefix for chunk filenames (defaults to base filename)')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -102,7 +109,10 @@ def scrape(base_url: str,
            format: str,
            resume: Optional[str],
            resume_preview: Optional[str],
-           from_cache: Optional[str]):
+           from_cache: Optional[str],
+           chunk_size: Optional[str],
+           chunk_pages: Optional[int],
+           chunk_prefix: Optional[str]):
     """
     Scrape a website and generate output document.
     
@@ -324,9 +334,29 @@ def scrape(base_url: str,
         elif format_lower == 'markdown':
             progress.start_phase(Phase.PDF_GENERATION, 1, "Creating Markdown document")  # Reusing PDF phase for now
             generator = MarkdownGenerator(app_config)
-            output_path = generator.generate(scraped_data, base_url, output=output)
-            progress.finish_phase("Markdown generated successfully")
-            click.echo(f"🎉 Markdown generated successfully: {output_path}")
+            
+            # Check if chunking is requested
+            if chunk_size or chunk_pages:
+                if not generator.supports_chunking():
+                    click.echo("⚠️  Warning: Chunking not supported for markdown format, generating single file")
+                    output_path = generator.generate(scraped_data, base_url, output=output)
+                    click.echo(f"🎉 Markdown generated successfully: {output_path}")
+                else:
+                    output_paths = generator.generate_chunked(
+                        scraped_data, base_url, 
+                        chunk_size=chunk_size, 
+                        chunk_pages=chunk_pages,
+                        chunk_prefix=chunk_prefix,
+                        output=output
+                    )
+                    click.echo(f"🎉 Chunked markdown generated successfully: {len(output_paths)} files")
+                    for path in output_paths[:3]:  # Show first 3 files
+                        click.echo(f"   📄 {path}")
+                    if len(output_paths) > 3:
+                        click.echo(f"   ... and {len(output_paths) - 3} more files")
+            else:
+                output_path = generator.generate(scraped_data, base_url, output=output)
+                click.echo(f"🎉 Markdown generated successfully: {output_path}")
         
         progress.cleanup()
         
