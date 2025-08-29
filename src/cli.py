@@ -114,10 +114,6 @@ except ImportError:
 @click.option('--auth', 
               is_flag=True, 
               help='Enable authentication (credentials from environment variables)')
-@click.version_option(
-    version=get_version_string() if VERSION_AVAILABLE else "unknown",
-    prog_name="site2pdf"
-)
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -578,6 +574,10 @@ except ImportError:
 
 
 @click.group()
+@click.version_option(
+    version=get_version_string() if VERSION_AVAILABLE else "unknown",
+    prog_name="site2pdf"
+)
 def main():
     """site2pdf - Convert websites to PDF documents with caching, todo management, and multi-format output."""
     pass
