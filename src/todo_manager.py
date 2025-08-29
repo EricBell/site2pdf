@@ -7,10 +7,17 @@ Provides functionality to manage tasks with priorities, due dates, and status tr
 
 import os
 import yaml
+import shutil
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import uuid
+
+# Import user data directory utilities
+try:
+    from .utils import get_user_data_dir, ensure_user_data_dir
+except ImportError:
+    from utils import get_user_data_dir, ensure_user_data_dir
 
 
 class Priority(Enum):
@@ -30,9 +37,31 @@ class Status(Enum):
 class TodoManager:
     """Manages todos stored in YAML format."""
     
-    def __init__(self, todos_file: str = "todos.yaml"):
+    def __init__(self, todos_file: str = None):
+        if todos_file is None:
+            # Use home directory by default
+            user_dir = ensure_user_data_dir()
+            todos_file = os.path.join(user_dir, 'todos.yaml')
+            
+            # Migration logic: move from project directory if exists
+            self._migrate_todos_if_needed(todos_file)
+        
         self.todos_file = todos_file
         self.todos = self._load_todos()
+    
+    def _migrate_todos_if_needed(self, target_file: str):
+        """Migrate todos.yaml from project directory to user directory if needed."""
+        project_todos = "todos.yaml"
+        
+        # Only migrate if project file exists and target doesn't
+        if os.path.exists(project_todos) and not os.path.exists(target_file):
+            try:
+                shutil.move(project_todos, target_file)
+                print(f"📁 Migrated todos database to: {target_file}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not migrate todos file: {e}")
+                # Continue with project directory file as fallback
+                self.todos_file = project_todos
     
     def _load_todos(self) -> Dict[str, Any]:
         """Load todos from YAML file."""

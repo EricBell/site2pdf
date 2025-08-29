@@ -16,6 +16,12 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urlparse, quote_plus
 
+# Import user data directory utilities
+try:
+    from .utils import get_user_data_dir, ensure_user_data_dir
+except ImportError:
+    from utils import get_user_data_dir, ensure_user_data_dir
+
 
 class CacheManager:
     """
@@ -29,7 +35,12 @@ class CacheManager:
     - Cache validation and recovery
     """
     
-    def __init__(self, cache_dir: str = "cache", config: Dict[str, Any] = None):
+    def __init__(self, cache_dir: str = None, config: Dict[str, Any] = None):
+        # Use user data directory if no specific cache directory provided
+        if cache_dir is None:
+            user_dir = ensure_user_data_dir()
+            cache_dir = os.path.join(user_dir, "cache")
+        
         self.cache_dir = Path(cache_dir)
         self.sessions_dir = self.cache_dir / "sessions"
         self.previews_dir = self.cache_dir / "previews"

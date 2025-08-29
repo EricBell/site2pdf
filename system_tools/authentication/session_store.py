@@ -89,7 +89,20 @@ class SessionStore:
     """Manages authentication session persistence"""
     
     def __init__(self, cache_dir: Path = None):
-        self.cache_dir = cache_dir or Path.cwd() / 'cache'
+        if cache_dir is None:
+            # Import here to avoid circular imports
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+            try:
+                from src.utils import ensure_user_data_dir
+                user_dir = ensure_user_data_dir()
+                cache_dir = Path(user_dir) / 'cache'
+            except ImportError:
+                # Fallback to current directory
+                cache_dir = Path.cwd() / 'cache'
+        
+        self.cache_dir = cache_dir
         self.auth_cache_dir = self.cache_dir / 'auth_sessions'
         self.auth_cache_dir.mkdir(parents=True, exist_ok=True)
     

@@ -124,6 +124,49 @@ def apply_env_overrides(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+def get_user_data_dir() -> str:
+    """
+    Get platform-appropriate user data directory for site2pdf
+    
+    Returns:
+        Path to user data directory
+    """
+    import platform
+    
+    system = platform.system().lower()
+    
+    if system == 'windows':
+        # Windows: %APPDATA%/site2pdf
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            return os.path.join(appdata, 'site2pdf')
+        else:
+            # Fallback to user home if APPDATA not available
+            return os.path.join(os.path.expanduser('~'), 'site2pdf')
+    else:
+        # Linux/macOS: ~/.site2pdf
+        return os.path.join(os.path.expanduser('~'), '.site2pdf')
+
+def ensure_user_data_dir() -> str:
+    """
+    Ensure user data directory exists and return path
+    
+    Returns:
+        Path to user data directory
+    """
+    user_dir = get_user_data_dir()
+    os.makedirs(user_dir, exist_ok=True)
+    
+    # Create subdirectories
+    os.makedirs(os.path.join(user_dir, 'cache'), exist_ok=True)
+    os.makedirs(os.path.join(user_dir, 'cache', 'sessions'), exist_ok=True)
+    os.makedirs(os.path.join(user_dir, 'cache', 'previews'), exist_ok=True)
+    os.makedirs(os.path.join(user_dir, 'cache', 'auth_sessions'), exist_ok=True)
+    os.makedirs(os.path.join(user_dir, 'logs'), exist_ok=True)
+    
+    return user_dir
+
+
 def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
     """Setup logging configuration."""
     # Create logs directory
