@@ -55,6 +55,8 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 
 ### Installation
 
+### Option 1: From Source (Development)
+
 1. Clone the repository:
 ```bash
 git clone <repository-url>
@@ -72,18 +74,58 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### Option 2: Standalone Executable (No Python Required)
+
+For users who don't have Python installed, you can build a standalone executable:
+
+1. **Build the executable** (requires Python environment):
+```bash
+# Linux/macOS
+./build_executable.sh
+
+# Windows
+build_executable.bat
+
+# Or manually
+pyinstaller site2pdf.spec
+```
+
+2. **Run the executable**:
+```bash
+# Linux/macOS
+./dist/site2pdf [options] <url>
+
+# Windows
+dist\site2pdf.exe [options] <url>
+```
+
+**Executable Features:**
+- ✅ **No Python Required**: Runs on systems without Python installed
+- ✅ **Self-Contained**: All dependencies included (~47MB)
+- ✅ **Cross-Platform**: Build for Linux, macOS, or Windows
+- ✅ **Full Feature Support**: All CLI options and functionality available
+
 ### Basic Usage
 
 #### Website Scraping
+
+**With Python:**
 ```bash
 # Scrape a website and generate PDF (default)
 python run.py scrape https://example.com
 
 # Generate markdown instead of PDF
 python run.py scrape https://example.com --format markdown
+```
+
+**With Executable:**
+```bash
+# Same functionality, no Python needed
+./dist/site2pdf https://example.com
+./dist/site2pdf https://example.com --format markdown
 
 # With custom options
-python run.py scrape https://example.com --output my-site.pdf --max-depth 3 --verbose
+./dist/site2pdf https://example.com --output my-site.pdf --max-depth 3 --verbose
 
 # Export to markdown with custom filename
 python run.py scrape https://example.com --format md --output my-site.md
@@ -835,6 +877,7 @@ cat logs/scraper.log
 
 ## Dependencies
 
+### Development Dependencies (Python)
 - **requests**: HTTP requests and web scraping
 - **beautifulsoup4**: HTML parsing and sanitization
 - **click**: Command-line interface and todo management
@@ -844,6 +887,14 @@ cat logs/scraper.log
 - **tqdm**: Progress bars
 - **Pillow**: Image processing
 - **uuid**: Unique todo ID generation
+- **pyinstaller**: Executable creation tool
+
+### Executable Distribution
+The standalone executable includes all dependencies and requires:
+- **No Python installation**
+- **No dependency management** 
+- **~47MB disk space**
+- **Compatible OS** (Linux, macOS, or Windows)
 
 ## License
 
