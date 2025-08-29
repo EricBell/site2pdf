@@ -1,0 +1,11 @@
+# Authentication Module Dependencies
+# Only external dependencies - most functionality uses standard library
+
+# HTML parsing for form detection
+beautifulsoup4>=4.12.0
+
+# HTTP requests for authentication
+requests>=2.31.0
+
+# YAML configuration support (optional)
+PyYAML>=6.0

@@ -116,3 +116,25 @@ pdf:
     top: 20
   output_filename: scraped_website.pdf
   page_size: A4
+authentication:
+  enabled: false                    # Enable authentication system
+  cache_sessions: true              # Cache login sessions to avoid re-authentication  
+  session_duration: "24h"           # How long cached sessions remain valid
+  sites:                            # Site-specific authentication configuration
+    # Example site configuration
+    # example.com:
+    #   plugin: "generic_form"       # Plugin to use (generic_form, github, etc.)
+    #   login_url: "/login"          # Login page URL (relative or absolute)
+    #   form_selectors:              # CSS selectors for form elements
+    #     username_field: "input[name='username']"
+    #     password_field: "input[name='password']"
+    #     submit_button: "input[type='submit']"
+    #     csrf_token: "input[name='_token']"
+    #   success_indicators:          # Elements that appear after successful login
+    #     - ".user-menu"
+    #     - "a[href*='logout']"
+    #   failure_indicators:          # Elements that appear after failed login  
+    #     - ".error-message"
+    #     - ".login-failed"
+    #   session_duration: "24h"      # Override default session duration
+    #   multi_step_login: false      # Enable for username-first then password flows

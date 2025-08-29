@@ -37,6 +37,23 @@ Configuration management tools:
 - Configuration inheritance
 - Schema validation
 
+### 🔐 Authentication (`system_tools.authentication`)
+**Status: ✅ Complete**
+
+Modular authentication system for web applications:
+- Generic form-based login detection
+- Site-specific plugin architecture
+- Session persistence and caching
+- Secure credential management
+- CSRF token handling
+- Multi-step login support
+
+```python
+from system_tools.authentication import create_auth_manager
+auth = create_auth_manager("https://example.com")
+session = await auth.authenticate("username", "password")
+```
+
 ### 📊 Monitoring (`system_tools.monitoring`)
 **Status: 🚧 Planned**
 

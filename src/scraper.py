@@ -23,9 +23,20 @@ except ImportError:
     from path_scoping import PathScopeManager
     from cache_manager import CacheManager
 
+# Authentication system import
+try:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from system_tools.authentication import AuthenticationManager
+    AUTHENTICATION_AVAILABLE = True
+except ImportError:
+    AUTHENTICATION_AVAILABLE = False
+    AuthenticationManager = None
+
 
 class WebScraper:
-    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False, cache_session_id: str = None):
+    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False, cache_session_id: str = None, auth_username: str = None, auth_password: str = None):
         self.config = config
         self.dry_run = dry_run
         self.verbose = verbose
@@ -41,6 +52,12 @@ class WebScraper:
         self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
         self.exclude_patterns = exclude_patterns or []
         self.path_scope: Optional[PathScopeManager] = None  # Initialized when we know the starting URL
+        
+        # Authentication support
+        self.auth_enabled = config.get('authentication', {}).get('enabled', False) or (auth_username and auth_password)
+        self.auth_manager: Optional[AuthenticationManager] = None
+        self.auth_username = auth_username
+        self.auth_password = auth_password
         
         # Caching support
         self.cache_enabled = config.get('cache', {}).get('enabled', True) and not dry_run
@@ -310,10 +327,14 @@ class WebScraper:
             
         return discovered_list, classifications
 
-    def scrape_approved_urls(self, approved_urls: Set[str]) -> List[Dict[str, Any]]:
+    def scrape_approved_urls(self, approved_urls: Set[str], base_url: str = None) -> List[Dict[str, Any]]:
         """Scrape only the pre-approved URLs."""
         if self.dry_run:
             return []
+        
+        # Setup authentication if we have a base URL
+        if base_url and self.auth_enabled:
+            self._setup_authentication(base_url)
         
         # Handle caching and resume
         if self.cache_enabled and self.cache_manager:
@@ -384,12 +405,48 @@ class WebScraper:
         self.logger.info(f"Scraping completed. Total pages: {len(scraped_data)}")
         return scraped_data
 
+    def _setup_authentication(self, base_url: str):
+        """Setup authentication if enabled"""
+        if not self.auth_enabled or not AUTHENTICATION_AVAILABLE:
+            return
+            
+        try:
+            # Create authentication manager
+            cache_dir = None
+            if self.cache_enabled and self.cache_manager:
+                cache_dir = self.cache_manager.cache_dir
+                
+            auth_config = self.config.get('authentication', {})
+            self.auth_manager = AuthenticationManager(base_url, cache_dir=cache_dir, config=auth_config)
+            
+            # Authenticate
+            auth_session = self.auth_manager.authenticate(
+                username=self.auth_username,
+                password=self.auth_password
+            )
+            
+            # Replace scraper session with authenticated session
+            self.session = self.auth_manager.get_authenticated_session()
+            
+            if self.verbose:
+                print(f"🔐 Authentication successful for {self.auth_manager.domain}")
+                
+        except Exception as e:
+            self.logger.error(f"Authentication failed: {str(e)}")
+            if self.verbose:
+                print(f"❌ Authentication failed: {str(e)}")
+            # Continue without authentication
+            self.auth_enabled = False
+
     def scrape_website(self, base_url: str) -> List[Dict[str, Any]]:
         """Scrape the entire website starting from base_url with caching support."""
         if self.dry_run:
             return []
             
         self.base_domain = urlparse(base_url).netloc
+        
+        # Setup authentication if enabled
+        self._setup_authentication(base_url)
         
         # Initialize path scoping
         if not self.path_scope:

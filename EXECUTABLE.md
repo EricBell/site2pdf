@@ -68,6 +68,8 @@ The `site2pdf.spec` file includes optimizations for:
 - ✅ Cache system support
 - ✅ Todo management system
 - ✅ Preview mode and interactive features
+- ✅ Complete authentication system support
+- ✅ Session persistence and credential management
 
 ## 🚀 Distribution
 
@@ -91,6 +93,14 @@ The `site2pdf.spec` file includes optimizations for:
 
 # Resume from cache
 ./dist/site2pdf https://example.com --resume session_id
+
+# Authentication examples
+./dist/site2pdf https://protected-site.com --username myuser --password mypass
+./dist/site2pdf https://protected-site.com --auth  # Uses environment variables
+./dist/site2pdf https://intranet.company.com --username employee
+
+# Check version
+./dist/site2pdf --version
 ```
 
 ## 🔧 Troubleshooting
@@ -126,6 +136,18 @@ brew install cairo pango gdk-pixbuf libffi
 **2. Permissions**
 - Make sure executable has run permissions
 - Ensure output directory is writable
+
+**3. Authentication Issues**
+- Set environment variables for credentials:
+  ```bash
+  export SITE2PDF_AUTH_USERNAME="your-username"
+  export SITE2PDF_AUTH_PASSWORD="your-password"
+  ```
+- For site-specific credentials:
+  ```bash
+  export SITE2PDF_EXAMPLE_COM_USERNAME="site-user"
+  export SITE2PDF_EXAMPLE_COM_PASSWORD="site-pass"
+  ```
 
 ## 🌍 Cross-Platform Building
 

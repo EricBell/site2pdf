@@ -51,6 +51,16 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 🔍 **Full-Text Search**: Search across descriptions, categories, and notes
 - 📈 **Statistics Dashboard**: Track progress and completion rates
 
+### 🔐 **Authentication System**
+- 🎯 **Universal Login Support**: Automatically detects and handles common login forms
+- 🔌 **Plugin Architecture**: Site-specific authentication for complex flows
+- 💾 **Session Persistence**: Caches login sessions to avoid repeated authentication
+- 🛡️ **Secure Credential Management**: Environment variables, prompts, multiple sources
+- ⚙️ **YAML Configuration**: Site-specific login configuration support
+- 🔄 **Multi-Step Flows**: Handles username-first then password login patterns
+- 📊 **Session Validation**: Automatic session health checks and renewal
+- 🏢 **Enterprise Ready**: Works with corporate SSO, Confluence, Jira, GitHub, and more
+
 ## Quick Start
 
 ### Installation
@@ -127,6 +137,9 @@ python run.py scrape https://example.com --format markdown
 # With custom options
 ./dist/site2pdf https://example.com --output my-site.pdf --max-depth 3 --verbose
 
+# With authentication
+./dist/site2pdf https://protected-site.com --username myuser --password mypass
+
 # Export to markdown with custom filename
 python run.py scrape https://example.com --format md --output my-site.md
 
@@ -138,6 +151,10 @@ python run.py scrape https://example.com --include-menus
 
 # Dry run to see what would be scraped
 python run.py scrape https://example.com --dry-run
+
+# Authentication examples
+python run.py scrape https://protected-site.com --username myuser --password mypass
+python run.py scrape https://protected-site.com --auth  # Uses environment variables
 ```
 
 #### Todo Management
@@ -182,6 +199,10 @@ python run.py todo stats
 - `--chunk-pages`: Maximum number of pages per chunk
 - `--chunk-prefix`: Custom prefix for chunk filenames
 - `--remove-images`: Replace images with text placeholders for LLM compatibility
+- `--username`: Username for authentication
+- `--password`: Password for authentication (will prompt if username provided but password missing)
+- `--auth`: Enable authentication using environment variables
+- `--version`: Show the version and exit
 
 #### Todo Management Commands (`python run.py todo <command>`)
 - `add <description>`: Add a new todo item
@@ -264,6 +285,25 @@ chunking:
     markdown_overhead: 1.2   # Size estimation multiplier for Markdown
     pdf_overhead: 2.5        # Size estimation multiplier for PDF
 
+authentication:
+  enabled: false             # Enable authentication system
+  cache_sessions: true       # Cache login sessions to avoid re-authentication
+  session_duration: "24h"    # How long cached sessions remain valid
+  sites:                     # Site-specific authentication configuration
+    example.com:
+      plugin: "generic_form"
+      login_url: "/login"
+      form_selectors:
+        username_field: "input[name='username']"
+        password_field: "input[name='password']"
+        submit_button: "input[type='submit']"
+        csrf_token: "input[name='_token']"
+      success_indicators:
+        - ".user-menu"
+        - "a[href*='logout']"
+      failure_indicators:
+        - ".error-message"
+
 # ... see config.yaml for full options
 ```
 
@@ -280,6 +320,14 @@ CRAWL_DELAY_OVERRIDE=3
 
 # Debug mode
 DEBUG_MODE=true
+
+# Authentication credentials (recommended approach)
+SITE2PDF_AUTH_USERNAME=your-username
+SITE2PDF_AUTH_PASSWORD=your-password
+
+# Site-specific credentials (higher priority)
+SITE2PDF_EXAMPLE_COM_USERNAME=site-specific-user
+SITE2PDF_EXAMPLE_COM_PASSWORD=site-specific-pass
 ```
 
 ## Project Structure
@@ -310,7 +358,8 @@ site2pdf/
 │   └── markdown/          # Markdown generation package (NEW)
 │       └── markdown_generator.py
 ├── system_tools/           # Reusable system utilities (NEW)
-│   └── versioning/        # Version management
+│   ├── versioning/        # Version management
+│   └── authentication/   # Modular authentication system (NEW)
 ├── cache/                 # Cached scraping sessions and preview data
 │   ├── sessions/          # Scraped content cache by session ID
 │   └── previews/          # Preview session states
@@ -349,6 +398,27 @@ python run.py scrape https://example.com --format markdown --output docs.md
 #### Verbose Mode with Custom Delay
 ```bash
 python run.py scrape https://example.com --verbose --delay 3 --format markdown
+```
+
+#### Authentication Examples
+```bash
+# Basic authentication with username and password
+python run.py scrape https://protected-site.com --username myuser --password mypass
+
+# Authentication with environment variables (recommended)
+python run.py scrape https://protected-site.com --auth
+
+# Username provided, password prompted securely
+python run.py scrape https://protected-site.com --username myuser
+
+# Authentication with different output formats
+python run.py scrape https://protected-site.com --auth --format markdown --output secure-docs.md
+
+# Authentication with preview mode
+python run.py scrape https://protected-site.com --username user --preview
+
+# Check version
+python run.py scrape --version
 ```
 
 #### Menu Exclusion Examples

@@ -13,6 +13,17 @@ except ImportError:
     from utils import load_config, setup_logging
     from preview import URLPreview
 
+# Import version management
+try:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from system_tools.versioning import get_version_string
+    VERSION_AVAILABLE = True
+except ImportError:
+    VERSION_AVAILABLE = False
+    get_version_string = None
+
 # Import from new package structure
 try:
     # Try importing from project root (when run via run.py)
@@ -96,6 +107,17 @@ except ImportError:
 @click.option('--remove-images',
               is_flag=True,
               help='Replace images with text placeholders (e.g., "[image: alt text removed]")')
+@click.option('--username', 
+              help='Username for authentication')
+@click.option('--password', 
+              help='Password for authentication (will prompt if not provided)')
+@click.option('--auth', 
+              is_flag=True, 
+              help='Enable authentication (credentials from environment variables)')
+@click.version_option(
+    version=get_version_string() if VERSION_AVAILABLE else "unknown",
+    prog_name="site2pdf"
+)
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -116,7 +138,10 @@ def scrape(base_url: str,
            chunk_size: Optional[str],
            chunk_pages: Optional[int],
            chunk_prefix: Optional[str],
-           remove_images: bool):
+           remove_images: bool,
+           username: Optional[str],
+           password: Optional[str],
+           auth: bool):
     """
     Scrape a website and generate output document.
     
@@ -140,6 +165,31 @@ def scrape(base_url: str,
             app_config['logging']['level'] = 'DEBUG'
         if include_menus:
             app_config['content']['include_menus'] = True
+        
+        # Handle authentication options
+        auth_username = None
+        auth_password = None
+        
+        if auth or username or password:
+            # Enable authentication in config
+            if 'authentication' not in app_config:
+                app_config['authentication'] = {}
+            app_config['authentication']['enabled'] = True
+            
+            # Handle username
+            if username:
+                auth_username = username
+            
+            # Handle password - prompt if username provided but password missing
+            if username and not password:
+                import getpass
+                try:
+                    auth_password = getpass.getpass(f"Password for {username}: ")
+                except (KeyboardInterrupt, EOFError):
+                    click.echo("Authentication cancelled.")
+                    sys.exit(1)
+            elif password:
+                auth_password = password
         if remove_images:
             app_config['content']['remove_images'] = True
             
@@ -166,7 +216,7 @@ def scrape(base_url: str,
         
         if dry_run:
             click.echo(f"🔍 Dry run mode - analyzing what would be scraped from: {base_url}")
-            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
+            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password)
             try:
                 urls, classifications = scraper.discover_urls(base_url)
                 if urls:
@@ -245,7 +295,7 @@ def scrape(base_url: str,
             
             if preview or not approved_urls:
                 click.echo(f"🔍 Discovering URLs from: {base_url}")
-                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose)
+                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password)
                 try:
                     discovered_urls, classifications = scraper.discover_urls(base_url)
                     
@@ -295,9 +345,9 @@ def scrape(base_url: str,
             if approved_urls:
                 click.echo(f"🚀 Starting to scrape {len(approved_urls)} approved URLs")
                 scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
-                                   cache_session_id=resume)
+                                   cache_session_id=resume, auth_username=auth_username, auth_password=auth_password)
                 try:
-                    scraped_data = scraper.scrape_approved_urls(approved_urls)
+                    scraped_data = scraper.scrape_approved_urls(approved_urls, base_url)
                 finally:
                     scraper.cleanup()
             else:
@@ -307,7 +357,7 @@ def scrape(base_url: str,
             # Standard scraping mode
             click.echo(f"🚀 Starting to scrape: {base_url}")
             scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
-                               cache_session_id=resume)
+                               cache_session_id=resume, auth_username=auth_username, auth_password=auth_password)
             try:
                 scraped_data = scraper.scrape_website(base_url)
             finally:
