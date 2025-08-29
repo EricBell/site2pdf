@@ -19,6 +19,11 @@ datas = []
 if os.path.exists(os.path.join(project_root, 'config.yaml')):
     datas.append((os.path.join(project_root, 'config.yaml'), '.'))
 
+# Include version.json for version management
+version_json_path = os.path.join(project_root, 'system_tools', 'versioning', 'version.json')
+if os.path.exists(version_json_path):
+    datas.append((version_json_path, 'system_tools/versioning/'))
+
 # Collect weasyprint data files (CSS, fonts, etc.)
 try:
     weasyprint_datas = collect_data_files('weasyprint')

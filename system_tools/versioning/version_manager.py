@@ -20,6 +20,7 @@ To get the current version, use:
 """
 
 import os
+import sys
 import json
 import hashlib
 import logging
@@ -34,7 +35,16 @@ class VersionManager:
     """Manages application versioning based on file hashes"""
     
     def __init__(self, project_root: str = None):
-        self.project_root = Path(project_root) if project_root else Path(__file__).parent
+        if project_root:
+            self.project_root = Path(project_root)
+        elif getattr(sys, 'frozen', False):
+            # Running in PyInstaller bundle
+            bundle_dir = Path(sys._MEIPASS)
+            self.project_root = bundle_dir / 'system_tools' / 'versioning'
+        else:
+            # Running as script
+            self.project_root = Path(__file__).parent
+            
         self.version_file = self.project_root / 'version.json'
         self.tracked_files = [
             '*.py',
@@ -198,7 +208,12 @@ class VersionManager:
     
     def get_version_string(self) -> str:
         """Get formatted version string"""
-        major, minor, patch, _ = self.check_and_update_version()
+        if getattr(sys, 'frozen', False):
+            # Running in PyInstaller bundle - read-only mode
+            major, minor, patch = self.get_current_version()
+        else:
+            # Running as script - allow version updates
+            major, minor, patch, _ = self.check_and_update_version()
         return f"v{major}.{minor}.{patch}"
     
     def reset_version(self, major: int = 1, minor: int = 0, patch: int = 0) -> Tuple[int, int, int]:
@@ -215,11 +230,35 @@ class VersionManager:
         return major, minor, patch
 
 # Global version manager instance
-version_manager = VersionManager()
+# Handle PyInstaller bundle path detection
+if getattr(sys, 'frozen', False):
+    # Running in PyInstaller bundle - use bundle path
+    bundle_dir = Path(sys._MEIPASS)
+    version_root = bundle_dir / 'system_tools' / 'versioning'
+    version_manager = VersionManager(str(version_root))
+else:
+    # Running as script - use default
+    version_manager = VersionManager()
 
-def get_version_string() -> str:
+def get_version_string(quiet: bool = False) -> str:
     """Convenience function to get version string"""
-    return version_manager.get_version_string()
+    try:
+        if quiet:
+            # For CLI version command - suppress logging temporarily
+            old_level = logger.level
+            logger.setLevel(logging.CRITICAL + 1)  # Suppress all logs
+            try:
+                result = version_manager.get_version_string()
+            finally:
+                logger.setLevel(old_level)
+            return result
+        else:
+            return version_manager.get_version_string()
+    except Exception as e:
+        # Fallback for bundle environment if version.json is not accessible
+        if not quiet:
+            logger.warning(f"Could not load version from file: {e}")
+        return "v1.0.8"  # Current version as fallback
 
 def increment_major() -> str:
     """Convenience function to increment major version"""

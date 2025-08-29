@@ -575,7 +575,7 @@ except ImportError:
 
 @click.group()
 @click.version_option(
-    version=get_version_string() if VERSION_AVAILABLE else "unknown",
+    version=get_version_string(quiet=True) if VERSION_AVAILABLE else "unknown",
     prog_name="site2pdf"
 )
 def main():
