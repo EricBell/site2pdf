@@ -14,6 +14,7 @@ from .session_store import SessionStore, AuthSession
 from .credential_manager import CredentialManager, Credentials
 from .plugins.base_plugin import BaseAuthPlugin
 from .plugins.generic_form import GenericFormPlugin
+from .plugins.email_otp import EmailOTPPlugin
 from .exceptions import AuthenticationError, LoginFailedError, SessionExpiredError
 from .utils import extract_domain, normalize_url
 
@@ -52,6 +53,9 @@ class AuthenticationManager:
         # Generic form plugin (fallback)
         self.plugins['generic_form'] = GenericFormPlugin(self.config.get('generic_form', {}))
         
+        # Email OTP plugin
+        self.plugins['email_otp'] = EmailOTPPlugin(self.config.get('email_otp', {}))
+        
         # Site-specific plugins would be registered here
         # self.plugins['github.com'] = GitHubAuthPlugin()
     
@@ -59,8 +63,15 @@ class AuthenticationManager:
         """Register a site-specific authentication plugin"""
         self.plugins[domain] = plugin
     
-    def _get_plugin(self) -> BaseAuthPlugin:
+    def _get_plugin(self, plugin_type: str = None) -> BaseAuthPlugin:
         """Get the appropriate plugin for the current site"""
+        # If specific plugin type requested
+        if plugin_type:
+            if plugin_type in self.plugins:
+                return self.plugins[plugin_type]
+            else:
+                raise AuthenticationError(f"Unknown plugin type: {plugin_type}")
+        
         # Try site-specific plugin first
         if self.domain in self.plugins:
             return self.plugins[self.domain]
@@ -68,13 +79,14 @@ class AuthenticationManager:
         # Fall back to generic form plugin
         return self.plugins['generic_form']
     
-    def authenticate(self, username: str = None, password: str = None) -> AuthSession:
+    def authenticate(self, username: str = None, password: str = None, auth_type: str = None) -> AuthSession:
         """
         Authenticate with the target site
         
         Args:
             username: Username (optional, will try to get from env/prompt)
-            password: Password (optional, will try to get from env/prompt)
+            password: Password (optional, will try to get from env/prompt)  
+            auth_type: Authentication type ('generic_form', 'email_otp', etc.)
             
         Returns:
             AuthSession object
@@ -88,16 +100,20 @@ class AuthenticationManager:
                 logger.info(f"Using cached authentication for {self.domain}")
                 return self._current_session
             
-            # Get credentials
+            # Get credentials (for email OTP, password not required)
+            require_password = auth_type != "email_otp"
             credentials = self.credential_manager.get_credentials(
-                self.site_url, username, password
+                self.site_url, username, password, require_password=require_password
             )
             
-            if not credentials.validate():
-                raise AuthenticationError("Invalid or missing credentials")
+            if not credentials.validate(require_password=require_password):
+                if auth_type == "email_otp":
+                    raise AuthenticationError("Email address is required for email OTP authentication")
+                else:
+                    raise AuthenticationError("Invalid or missing credentials")
             
             # Perform authentication
-            auth_session = self._perform_authentication(credentials)
+            auth_session = self._perform_authentication(credentials, auth_type)
             
             # Cache the session
             self.session_store.save_session(auth_session)
@@ -113,12 +129,13 @@ class AuthenticationManager:
             logger.error(f"Authentication failed for {self.domain}: {str(e)}")
             raise AuthenticationError(f"Authentication failed: {str(e)}") from e
     
-    def _perform_authentication(self, credentials: Credentials) -> AuthSession:
+    def _perform_authentication(self, credentials: Credentials, auth_type: str = None) -> AuthSession:
         """
         Perform the actual authentication process
         
         Args:
             credentials: User credentials
+            auth_type: Authentication type to use
             
         Returns:
             AuthSession object
@@ -126,7 +143,7 @@ class AuthenticationManager:
         Raises:
             LoginFailedError: If login fails
         """
-        plugin = self._get_plugin()
+        plugin = self._get_plugin(auth_type)
         
         # Create a new session
         session = requests.Session()
@@ -147,6 +164,14 @@ class AuthenticationManager:
         
         # Detect login form
         login_form = plugin.detect_login_form(soup, login_url)
+        
+        # If we specifically requested email_otp but didn't find a form, log the issue
+        if not login_form and auth_type == "email_otp":
+            logger.warning("Email OTP authentication requested but no suitable form found. Available forms:")
+            forms = soup.find_all('form')
+            for i, form in enumerate(forms):
+                logger.warning(f"  Form {i+1}: {form.get('action', 'no action')} - {len(form.find_all('input'))} inputs")
+        
         if not login_form:
             # Try multi-step login detection
             # Look for username-only form first
@@ -188,6 +213,28 @@ class AuthenticationManager:
         result = plugin.perform_login(
             session, login_form, credentials.username, credentials.password
         )
+        
+        # Handle multi-step authentication (e.g., email OTP)
+        if result.requires_additional_steps and result.step_type == "email_otp":
+            # Handle email OTP flow
+            verification_url = result.step_data.get('verification_url', result.response.url)
+            email = result.step_data.get('email', credentials.username)
+            
+            import click
+            click.echo(f"📧 Verification code sent to {email}")
+            
+            # Verify OTP code with interactive input
+            verify_result = plugin.verify_email_otp(
+                session, 
+                code=None,  # Will prompt interactively
+                verification_url=verification_url,
+                form_data=result.step_data
+            )
+            
+            if not verify_result.success:
+                raise LoginFailedError(verify_result.error_message or "Email OTP verification failed")
+            
+            result = verify_result
         
         if not result.success:
             raise LoginFailedError(result.error_message or "Login failed")

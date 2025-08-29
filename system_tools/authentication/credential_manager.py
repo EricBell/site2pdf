@@ -15,9 +15,17 @@ class Credentials(NamedTuple):
     username: str
     password: str
     
-    def validate(self) -> bool:
-        """Validate credentials are not empty"""
-        return bool(self.username and self.password)
+    def validate(self, require_password: bool = True) -> bool:
+        """
+        Validate credentials are not empty
+        
+        Args:
+            require_password: Whether password is required (False for email OTP)
+        """
+        if require_password:
+            return bool(self.username and self.password)
+        else:
+            return bool(self.username)  # Only require username for email OTP
 
 class CredentialManager:
     """Secure credential management with multiple sources"""
@@ -25,7 +33,7 @@ class CredentialManager:
     def __init__(self):
         self._cached_credentials: Dict[str, Credentials] = {}
     
-    def get_credentials(self, site_url: str, username: str = None, password: str = None) -> Credentials:
+    def get_credentials(self, site_url: str, username: str = None, password: str = None, require_password: bool = True) -> Credentials:
         """
         Get credentials from multiple sources in priority order:
         1. Direct parameters
@@ -37,6 +45,7 @@ class CredentialManager:
             site_url: Target website URL
             username: Direct username (highest priority)
             password: Direct password (highest priority)
+            require_password: Whether password is required (False for email OTP)
             
         Returns:
             Credentials object
@@ -52,8 +61,8 @@ class CredentialManager:
             return self._cached_credentials[cache_key]
         
         # Priority 1: Direct parameters
-        if username and password:
-            credentials = Credentials(username, password)
+        if username and (password or not require_password):
+            credentials = Credentials(username, password or "")
             self._cached_credentials[cache_key] = credentials
             return credentials
         
@@ -61,8 +70,8 @@ class CredentialManager:
         env_username = username or self._get_site_env_var(domain, 'USERNAME')
         env_password = password or self._get_site_env_var(domain, 'PASSWORD')
         
-        if env_username and env_password:
-            credentials = Credentials(env_username, env_password)
+        if env_username and (env_password or not require_password):
+            credentials = Credentials(env_username, env_password or "")
             self._cached_credentials[cache_key] = credentials
             return credentials
         
@@ -70,8 +79,8 @@ class CredentialManager:
         general_username = env_username or os.getenv('SITE2PDF_AUTH_USERNAME')
         general_password = env_password or os.getenv('SITE2PDF_AUTH_PASSWORD')
         
-        if general_username and general_password:
-            credentials = Credentials(general_username, general_password)
+        if general_username and (general_password or not require_password):
+            credentials = Credentials(general_username, general_password or "")
             self._cached_credentials[cache_key] = credentials
             return credentials
         
@@ -79,9 +88,12 @@ class CredentialManager:
         if os.isatty(0):  # Check if running in terminal
             try:
                 prompt_username = env_username or general_username or input(f"Username for {domain}: ")
-                prompt_password = env_password or general_password or getpass.getpass(f"Password for {domain}: ")
+                if require_password:
+                    prompt_password = env_password or general_password or getpass.getpass(f"Password for {domain}: ")
+                else:
+                    prompt_password = env_password or general_password or ""
                 
-                if prompt_username and prompt_password:
+                if prompt_username and (prompt_password or not require_password):
                     credentials = Credentials(prompt_username, prompt_password)
                     self._cached_credentials[cache_key] = credentials
                     return credentials

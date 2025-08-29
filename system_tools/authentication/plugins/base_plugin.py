@@ -26,6 +26,8 @@ class AuthResult(NamedTuple):
     error_message: Optional[str] = None
     requires_additional_steps: bool = False
     next_step_url: Optional[str] = None
+    step_type: Optional[str] = None  # 'email_otp', 'sms_otp', '2fa', etc.
+    step_data: Dict[str, Any] = {}   # Additional data for the step
 
 class BaseAuthPlugin(ABC):
     """Abstract base class for site-specific authentication plugins"""
@@ -147,6 +149,47 @@ class BaseAuthPlugin(ABC):
         return AuthResult(
             success=False,
             error_message="Multi-step login not implemented for this plugin"
+        )
+    
+    def handle_email_otp(self, session: requests.Session, email: str, 
+                        previous_response: requests.Response = None) -> AuthResult:
+        """
+        Handle email-based OTP authentication
+        
+        Default implementation returns not implemented - override in subclasses
+        
+        Args:
+            session: requests.Session to use
+            email: Email address for OTP
+            previous_response: Previous response from initial login attempt
+            
+        Returns:
+            AuthResult indicating if email was sent and next steps required
+        """
+        return AuthResult(
+            success=False,
+            error_message="Email OTP authentication not implemented for this plugin"
+        )
+    
+    def verify_email_otp(self, session: requests.Session, code: str, 
+                        verification_url: str = None, form_data: Dict[str, Any] = None) -> AuthResult:
+        """
+        Verify email OTP code
+        
+        Default implementation returns not implemented - override in subclasses
+        
+        Args:
+            session: requests.Session to use
+            code: OTP code from email
+            verification_url: URL to submit verification (if different from current)
+            form_data: Additional form data needed for verification
+            
+        Returns:
+            AuthResult indicating final authentication status
+        """
+        return AuthResult(
+            success=False,
+            error_message="Email OTP verification not implemented for this plugin"
         )
     
     def extract_form_data(self, form: LoginForm, username: str, password: str) -> Dict[str, str]:

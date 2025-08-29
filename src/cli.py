@@ -112,8 +112,8 @@ except ImportError:
 @click.option('--password', 
               help='Password for authentication (will prompt if not provided)')
 @click.option('--auth', 
-              is_flag=True, 
-              help='Enable authentication (credentials from environment variables)')
+              type=click.Choice(['form', 'email_otp'], case_sensitive=False),
+              help='Authentication type: form (default form login), email_otp (email verification code)')
 def scrape(base_url: str, 
            output: Optional[str],
            max_depth: Optional[int],
@@ -137,7 +137,7 @@ def scrape(base_url: str,
            remove_images: bool,
            username: Optional[str],
            password: Optional[str],
-           auth: bool):
+           auth: Optional[str]):
     """
     Scrape a website and generate output document.
     
@@ -165,6 +165,7 @@ def scrape(base_url: str,
         # Handle authentication options
         auth_username = None
         auth_password = None
+        auth_type = None
         
         if auth or username or password:
             # Enable authentication in config
@@ -172,20 +173,30 @@ def scrape(base_url: str,
                 app_config['authentication'] = {}
             app_config['authentication']['enabled'] = True
             
+            # Set authentication type
+            auth_type = auth or 'generic_form'  # Default to generic form auth
+            
             # Handle username
             if username:
                 auth_username = username
             
-            # Handle password - prompt if username provided but password missing
-            if username and not password:
-                import getpass
-                try:
-                    auth_password = getpass.getpass(f"Password for {username}: ")
-                except (KeyboardInterrupt, EOFError):
-                    click.echo("Authentication cancelled.")
-                    sys.exit(1)
-            elif password:
-                auth_password = password
+            # Handle password - for email OTP, we only need email (username), not password
+            if auth_type == 'email_otp':
+                if not username:
+                    auth_username = click.prompt("Email address for authentication", type=str)
+                # Password not required for email OTP
+                auth_password = None
+            else:
+                # Handle password for form-based auth - prompt if username provided but password missing
+                if username and not password:
+                    import getpass
+                    try:
+                        auth_password = getpass.getpass(f"Password for {username}: ")
+                    except (KeyboardInterrupt, EOFError):
+                        click.echo("Authentication cancelled.")
+                        sys.exit(1)
+                elif password:
+                    auth_password = password
         if remove_images:
             app_config['content']['remove_images'] = True
             
@@ -212,7 +223,7 @@ def scrape(base_url: str,
         
         if dry_run:
             click.echo(f"🔍 Dry run mode - analyzing what would be scraped from: {base_url}")
-            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password)
+            scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password, auth_type=auth_type)
             try:
                 urls, classifications = scraper.discover_urls(base_url)
                 if urls:
@@ -291,7 +302,7 @@ def scrape(base_url: str,
             
             if preview or not approved_urls:
                 click.echo(f"🔍 Discovering URLs from: {base_url}")
-                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password)
+                scraper = WebScraper(app_config, dry_run=True, exclude_patterns=exclude_patterns, verbose=verbose, auth_username=auth_username, auth_password=auth_password, auth_type=auth_type)
                 try:
                     discovered_urls, classifications = scraper.discover_urls(base_url)
                     
@@ -341,7 +352,7 @@ def scrape(base_url: str,
             if approved_urls:
                 click.echo(f"🚀 Starting to scrape {len(approved_urls)} approved URLs")
                 scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
-                                   cache_session_id=resume, auth_username=auth_username, auth_password=auth_password)
+                                   cache_session_id=resume, auth_username=auth_username, auth_password=auth_password, auth_type=auth_type)
                 try:
                     scraped_data = scraper.scrape_approved_urls(approved_urls, base_url)
                 finally:

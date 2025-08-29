@@ -36,7 +36,7 @@ except ImportError:
 
 
 class WebScraper:
-    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False, cache_session_id: str = None, auth_username: str = None, auth_password: str = None):
+    def __init__(self, config: Dict[str, Any], dry_run: bool = False, exclude_patterns: List[str] = None, verbose: bool = False, cache_session_id: str = None, auth_username: str = None, auth_password: str = None, auth_type: str = None):
         self.config = config
         self.dry_run = dry_run
         self.verbose = verbose
@@ -54,10 +54,11 @@ class WebScraper:
         self.path_scope: Optional[PathScopeManager] = None  # Initialized when we know the starting URL
         
         # Authentication support
-        self.auth_enabled = config.get('authentication', {}).get('enabled', False) or (auth_username and auth_password)
+        self.auth_enabled = config.get('authentication', {}).get('enabled', False) or (auth_username and auth_password) or auth_type
         self.auth_manager: Optional[AuthenticationManager] = None
         self.auth_username = auth_username
         self.auth_password = auth_password
+        self.auth_type = auth_type
         
         # Caching support
         self.cache_enabled = config.get('cache', {}).get('enabled', True) and not dry_run
@@ -422,7 +423,8 @@ class WebScraper:
             # Authenticate
             auth_session = self.auth_manager.authenticate(
                 username=self.auth_username,
-                password=self.auth_password
+                password=self.auth_password,
+                auth_type=self.auth_type
             )
             
             # Replace scraper session with authenticated session
