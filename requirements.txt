@@ -10,3 +10,8 @@ Pillow>=10.0.0
 reportlab>=4.0.0
 tqdm>=4.65.0
 pyinstaller>=6.0.0
+
+# Optional JavaScript authentication dependencies
+# Install with: pip install selenium webdriver-manager
+# selenium>=4.15.0
+# webdriver-manager>=4.0.0

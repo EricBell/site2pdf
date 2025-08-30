@@ -17,9 +17,10 @@ from bs4 import BeautifulSoup
 import requests
 
 from .base_plugin import BaseAuthPlugin, LoginForm, AuthResult
+from .js_auth_mixin import JavaScriptAuthMixin
 
 
-class EmailOTPPlugin(BaseAuthPlugin):
+class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
     """Plugin for email-based OTP authentication"""
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -245,6 +246,17 @@ class EmailOTPPlugin(BaseAuthPlugin):
             form_data = self.extract_form_data(form, username, "")
             print(f"🔍 EmailOTP: Form data extracted: {form_data}")
             
+            # Look for additional hidden fields we might be missing
+            hidden_inputs = form.form_element.find_all('input', {'type': 'hidden'})
+            print(f"🔍 EmailOTP: Found {len(hidden_inputs)} hidden fields:")
+            for hidden in hidden_inputs:
+                name = hidden.get('name', 'no-name')
+                value = hidden.get('value', '')
+                print(f"  - {name} = '{value}'")
+                if name not in form_data:
+                    form_data[name] = value
+                    print(f"    ✅ Added missing hidden field: {name}")
+            
             # If we have a specific OTP button, add its name/value to form data
             if form.submit_button and form.submit_button.get('name'):
                 button_name = form.submit_button.get('name')
@@ -255,15 +267,32 @@ class EmailOTPPlugin(BaseAuthPlugin):
             print(f"🔍 EmailOTP: Submitting to {form.action_url} with method {form.method}")
             print(f"🔍 EmailOTP: Final form data: {form_data}")
             
+            # Add proper headers
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Referer': form.action_url,
+                'Origin': '/'.join(form.action_url.split('/')[:3])
+            }
+            
             response = session.request(
                 method=form.method,
                 url=form.action_url,
                 data=form_data,
+                headers=headers,
                 allow_redirects=True
             )
             
             print(f"🔍 EmailOTP: Response status: {response.status_code}")
             print(f"🔍 EmailOTP: Response URL: {response.url}")
+            
+            # Check if we got redirected back to the same login page (indicates JavaScript dependency)
+            if response.url == form.action_url:
+                print("🔍 EmailOTP: ⚠️  Response redirected back to login page - likely JavaScript-only form")
+                
+                # Check if the page has JavaScript form handlers
+                if self._has_javascript_form_handling(response.text):
+                    print("🔍 EmailOTP: 🔄 Detected JavaScript-dependent form - trying browser automation fallback")
+                    return self.perform_login_js(session, form, username, password)
             
             # Check if email was accepted and OTP was sent
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -299,10 +328,23 @@ class EmailOTPPlugin(BaseAuthPlugin):
                 )
             else:
                 print(f"🔍 EmailOTP: No explicit OTP form found, but response was successful")
-                # If we got a successful response (200) and we're still on the login page,
-                # assume the email was sent and we should proceed with OTP verification
-                if response.status_code == 200:
-                    print(f"🔍 EmailOTP: Assuming email OTP was sent successfully, proceeding with code verification")
+                print(f"🔍 EmailOTP: Response content preview (first 500 chars):")
+                print(f"🔍 {response.text[:500]}...")
+                
+                # Look for success messages indicating email was sent
+                success_indicators = [
+                    r'code.{0,20}sent',
+                    r'email.{0,20}sent',
+                    r'verification.{0,20}sent',
+                    r'check.{0,20}email',
+                    r'sent.{0,20}email'
+                ]
+                
+                response_text_lower = response.text.lower()
+                email_sent = any(re.search(pattern, response_text_lower) for pattern in success_indicators)
+                
+                if email_sent:
+                    print(f"🔍 EmailOTP: Found success indicators in response, email likely sent")
                     return AuthResult(
                         success=False,  # Not complete yet
                         response=response,
@@ -313,6 +355,24 @@ class EmailOTPPlugin(BaseAuthPlugin):
                             "form_action": "/login",  # Assume same endpoint
                             "email": username
                         }
+                    )
+                elif response.status_code == 200:
+                    print(f"🔍 EmailOTP: No success indicators found - this may be an error")
+                    # Check for error messages more thoroughly
+                    error_msg = self._extract_error_message(soup)
+                    if not error_msg:
+                        # Look for any text that might indicate an error
+                        form_text = soup.get_text()
+                        error_keywords = ['error', 'invalid', 'incorrect', 'failed', 'not found']
+                        for keyword in error_keywords:
+                            if keyword in form_text.lower():
+                                error_msg = f"Form submission may have failed (found '{keyword}' in response)"
+                                break
+                    
+                    return AuthResult(
+                        success=False,
+                        response=response,
+                        error_message=error_msg or "Email OTP submission unclear - no success indicators found in response"
                     )
                 else:
                     # Check for error messages
@@ -576,6 +636,231 @@ class EmailOTPPlugin(BaseAuthPlugin):
                 return error_elem.get_text(strip=True)
         
         return None
+    
+    def _has_javascript_form_handling(self, html_content):
+        """
+        Check if the page uses JavaScript for form handling
+        
+        Args:
+            html_content: HTML content as string
+            
+        Returns:
+            bool: True if JavaScript form handling is detected
+        """
+        js_indicators = [
+            r'addEventListener\s*\(\s*[\'"]submit[\'"]',
+            r'onSubmit\s*=',
+            r'preventDefault\s*\(\s*\)',
+            r'event\.preventDefault',
+            r'form\.submit\s*\(',
+            r'fetch\s*\(',
+            r'XMLHttpRequest',
+            r'ajax',
+            r'form\s*\.\s*addEventListener',
+            r'document\.querySelector.*submit',
+            r'e\.preventDefault'
+        ]
+        
+        content_lower = html_content.lower()
+        detected_patterns = []
+        
+        for pattern in js_indicators:
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                detected_patterns.append(pattern)
+        
+        if detected_patterns:
+            print(f"🔍 EmailOTP: JavaScript form handling patterns detected: {detected_patterns[:3]}")
+            return True
+        
+        return False
+    
+    def perform_login_js(self, session, form, username: str, password: str) -> AuthResult:
+        """
+        Perform email OTP login using JavaScript/browser automation
+        
+        Args:
+            session: requests.Session (not used for JS auth)
+            form: LoginForm object from detect_login_form
+            username: Email address
+            password: Password (not used for email OTP)
+            
+        Returns:
+            AuthResult indicating success/failure
+        """
+        print("🚀 EmailOTP: Starting JavaScript-based authentication")
+        
+        # Create WebDriver context
+        with self as js_context:
+            if not self.driver:
+                return AuthResult(
+                    success=False,
+                    error_message="Failed to initialize browser automation. Please ensure Chrome browser is installed and JavaScript dependencies are available. Run: python install_js_deps.py"
+                )
+            
+            try:
+                # Navigate to login page
+                print(f"🔍 EmailOTP: Navigating to {form.action_url}")
+                self.driver.get(form.action_url)
+                
+                # Find email input field
+                email_selectors = [
+                    'input[type="email"]',
+                    'input[name*="email"]',
+                    'input[id*="email"]',
+                    'input[autocomplete="email"]',
+                    'input[placeholder*="Email"]',
+                    'input[placeholder*="EMAIL"]'
+                ]
+                
+                email_input = self._find_element_by_selectors(email_selectors, timeout=10)
+                if not email_input:
+                    return AuthResult(
+                        success=False,
+                        error_message="Could not find email input field on the page"
+                    )
+                
+                print(f"🔍 EmailOTP: Found email input field")
+                
+                # Enter email address - try different interaction methods
+                try:
+                    # First try to scroll to element and make it visible
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", email_input)
+                    time.sleep(1)
+                    
+                    # Try clicking to focus first
+                    email_input.click()
+                    email_input.clear()
+                    email_input.send_keys(username)
+                    print(f"🔍 EmailOTP: Entered email: {username}")
+                except Exception as interact_error:
+                    print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {interact_error}")
+                    # Fallback to JavaScript interaction
+                    self.driver.execute_script(f"arguments[0].value = '{username}';", email_input)
+                    self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", email_input)
+                    print(f"🔍 EmailOTP: Entered email via JavaScript: {username}")
+                
+                # Find and click OTP button
+                otp_button_selectors = [
+                    'button:contains("Send One-Time Code")',
+                    'button:contains("Send Code")',
+                    'input[value*="One-Time Code"]',
+                    'input[value*="Send Code"]',
+                    'button:contains("Continue")',
+                    'input[type="submit"]'
+                ]
+                
+                # Convert jQuery-style :contains to XPath for Selenium
+                xpath_selectors = [
+                    '//button[contains(text(), "Send One-Time Code")]',
+                    '//button[contains(text(), "Send Code")]', 
+                    '//button[contains(text(), "Continue")]',
+                    '//input[@value and contains(@value, "One-Time Code")]',
+                    '//input[@value and contains(@value, "Send Code")]',
+                    '//input[@type="submit"]'
+                ]
+                
+                otp_button = None
+                for xpath in xpath_selectors:
+                    try:
+                        from selenium.webdriver.common.by import By
+                        otp_button = self.driver.find_element(By.XPATH, xpath)
+                        print(f"🔍 EmailOTP: Found OTP button using xpath: {xpath}")
+                        break
+                    except:
+                        continue
+                
+                if not otp_button:
+                    return AuthResult(
+                        success=False,
+                        error_message="Could not find 'Send One-Time Code' button on the page"
+                    )
+                
+                # Click the OTP button
+                current_url = self.driver.current_url
+                print(f"🔍 EmailOTP: Clicking OTP button...")
+                
+                try:
+                    # Try normal click
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", otp_button)
+                    time.sleep(0.5)
+                    otp_button.click()
+                except Exception as click_error:
+                    print(f"🔍 EmailOTP: Normal button click failed, trying JavaScript: {click_error}")
+                    # Fallback to JavaScript click
+                    self.driver.execute_script("arguments[0].click();", otp_button)
+                
+                # Wait for response (either success message or URL change)
+                time.sleep(2)  # Give the page time to react
+                
+                # Check for success indicators
+                success_selectors = [
+                    'div:contains("code sent")',
+                    'div:contains("email sent")', 
+                    'div:contains("check your email")',
+                    'input[placeholder*="code" i]',
+                    'input[placeholder*="verification" i]'
+                ]
+                
+                success_xpaths = [
+                    '//*[contains(text(), "code sent")]',
+                    '//*[contains(text(), "email sent")]',
+                    '//*[contains(text(), "check your email")]',
+                    '//input[contains(@placeholder, "code")]',
+                    '//input[contains(@placeholder, "verification")]'
+                ]
+                
+                found_success = False
+                for xpath in success_xpaths:
+                    try:
+                        element = self.driver.find_element(By.XPATH, xpath)
+                        print(f"🔍 EmailOTP: Found success indicator: {element.text or element.get_attribute('placeholder')}")
+                        found_success = True
+                        break
+                    except:
+                        continue
+                
+                if found_success:
+                    print("🔍 EmailOTP: ✅ Email OTP request appears successful!")
+                    return AuthResult(
+                        success=True,
+                        requires_additional_steps=True,
+                        step_type='email_otp',
+                        next_step_url=self.driver.current_url,
+                        step_data={
+                            'email': username,
+                            'verification_method': 'javascript'
+                        }
+                    )
+                else:
+                    # Check if URL changed (might indicate success)
+                    if self.driver.current_url != current_url:
+                        print(f"🔍 EmailOTP: URL changed to {self.driver.current_url} - might indicate success")
+                        return AuthResult(
+                            success=True,
+                            requires_additional_steps=True,
+                            step_type='email_otp',
+                            next_step_url=self.driver.current_url,
+                            step_data={
+                                'email': username,
+                                'verification_method': 'javascript'
+                            }
+                        )
+                    
+                    # No clear success indicators found
+                    page_source_preview = self.driver.page_source[:500] if self.driver.page_source else "No content"
+                    return AuthResult(
+                        success=False,
+                        error_message=f"Email OTP submission via JavaScript unclear - no success indicators found. Page preview: {page_source_preview}"
+                    )
+                    
+            except Exception as e:
+                import traceback
+                print(f"🔍 EmailOTP: ❌ JavaScript authentication error: {e}")
+                print(f"🔍 EmailOTP: Traceback: {traceback.format_exc()}")
+                return AuthResult(
+                    success=False,
+                    error_message=f"JavaScript authentication failed: {str(e)}"
+                )
     
     def _find_otp_button(self, form) -> Optional[Any]:
         """Find OTP-related button in form"""
