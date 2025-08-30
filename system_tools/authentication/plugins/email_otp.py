@@ -28,6 +28,80 @@ class EmailOTPPlugin(BaseAuthPlugin):
         self.timeout_seconds = config.get('otp_timeout', 300)  # 5 minutes default
         self.max_retries = config.get('max_retries', 3)
     
+    def get_login_url(self, base_url: str) -> str:
+        """
+        Get the login URL for the site, with auto-discovery
+        
+        First checks config, then tries to discover login links on the base page
+        """
+        # Check if login URL is explicitly configured
+        if 'login_url' in self.config:
+            return self.config['login_url']
+        
+        # Try to auto-discover login URL from the base page
+        try:
+            import requests
+            from urllib.parse import urljoin
+            
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            })
+            
+            response = session.get(base_url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Look for login links
+            login_patterns = [
+                r'login',
+                r'sign.?in',
+                r'log.?in',
+                r'signin'
+            ]
+            
+            for pattern in login_patterns:
+                # Check href attributes
+                link = soup.find('a', href=re.compile(pattern, re.I))
+                if link:
+                    href = link.get('href')
+                    if href:
+                        return urljoin(base_url, href)
+                
+                # Check button/link text content
+                link = soup.find('a', string=re.compile(pattern, re.I))
+                if link:
+                    href = link.get('href')
+                    if href:
+                        return urljoin(base_url, href)
+            
+            # Fallback: try common login paths
+            common_paths = ['/login', '/signin', '/sign-in', '/auth/login']
+            for path in common_paths:
+                try:
+                    test_url = urljoin(base_url, path)
+                    test_response = session.get(test_url, timeout=5)
+                    if test_response.status_code == 200:
+                        # Check if this page has login forms
+                        test_soup = BeautifulSoup(test_response.text, 'html.parser')
+                        forms = test_soup.find_all('form')
+                        for form in forms:
+                            # Look for email or username fields
+                            if (form.find('input', {'type': 'email'}) or 
+                                form.find('input', {'name': re.compile(r'email|username', re.I)}) or
+                                form.find('input', {'type': 'text'})):
+                                return test_url
+                except:
+                    continue
+            
+        except Exception as e:
+            # If auto-discovery fails, fall back to base URL
+            pass
+        
+        # Fallback to base URL
+        return base_url
+    
     def detect_login_form(self, soup: BeautifulSoup, url: str) -> Optional[LoginForm]:
         """
         Detect email OTP login form
@@ -35,8 +109,35 @@ class EmailOTPPlugin(BaseAuthPlugin):
         Looks for forms with email input AND "Send One-Time Code" type button
         """
         forms = soup.find_all('form')
+        print(f"🔍 EmailOTP: Found {len(forms)} forms on login page")
         
-        for form in forms:
+        for i, form in enumerate(forms):
+            print(f"🔍 EmailOTP: Analyzing form {i+1}: action='{form.get('action', 'no action')}'")
+            
+            # Debug: show all inputs in this form
+            inputs = form.find_all('input')
+            print(f"  📝 Form {i+1} has {len(inputs)} inputs:")
+            for inp in inputs:
+                input_type = inp.get('type', 'text')
+                input_name = inp.get('name', 'no name')
+                input_placeholder = inp.get('placeholder', '')
+                input_value = inp.get('value', '')
+                print(f"    - type='{input_type}', name='{input_name}', placeholder='{input_placeholder}', value='{input_value}'")
+            
+            # Debug: show all buttons in this form  
+            buttons = form.find_all(['button', 'input'])
+            print(f"  🔘 Form {i+1} has {len(buttons)} buttons/inputs:")
+            for btn in buttons:
+                btn_type = btn.get('type', '')
+                btn_text = btn.get_text(strip=True) if btn.name == 'button' else btn.get('value', '')
+                btn_name = btn.get('name', '')
+                print(f"    - type='{btn_type}', name='{btn_name}', text/value='{btn_text}'")
+            print()
+        
+        print(f"🔍 EmailOTP: Finished analyzing all {len(forms)} forms on login page")
+        print()
+        
+        for i, form in enumerate(forms):
             # Look for email input
             email_field = (
                 form.find('input', {'type': 'email'}) or
@@ -45,8 +146,14 @@ class EmailOTPPlugin(BaseAuthPlugin):
             )
             
             if email_field:
+                print(f"  ✅ Found email field in form {i+1}")
                 # Look for OTP-related buttons (regardless of password field presence)
                 otp_button = self._find_otp_button(form)
+                
+                if otp_button:
+                    print(f"  ✅ Found OTP button in form {i+1}: {otp_button.get_text(strip=True) if otp_button.name == 'button' else otp_button.get('value', '')}")
+                else:
+                    print(f"  ❌ No OTP button found in form {i+1}")
                 
                 if otp_button:
                     # This is an email OTP form with dedicated OTP button
@@ -136,12 +243,17 @@ class EmailOTPPlugin(BaseAuthPlugin):
         try:
             # Submit email address with OTP button click
             form_data = self.extract_form_data(form, username, "")
+            print(f"🔍 EmailOTP: Form data extracted: {form_data}")
             
             # If we have a specific OTP button, add its name/value to form data
             if form.submit_button and form.submit_button.get('name'):
                 button_name = form.submit_button.get('name')
                 button_value = form.submit_button.get('value', '')
                 form_data[button_name] = button_value
+                print(f"🔍 EmailOTP: Added button data: {button_name}={button_value}")
+            
+            print(f"🔍 EmailOTP: Submitting to {form.action_url} with method {form.method}")
+            print(f"🔍 EmailOTP: Final form data: {form_data}")
             
             response = session.request(
                 method=form.method,
@@ -150,13 +262,30 @@ class EmailOTPPlugin(BaseAuthPlugin):
                 allow_redirects=True
             )
             
+            print(f"🔍 EmailOTP: Response status: {response.status_code}")
+            print(f"🔍 EmailOTP: Response URL: {response.url}")
+            
             # Check if email was accepted and OTP was sent
             soup = BeautifulSoup(response.text, 'html.parser')
             
             # Look for OTP code input form
+            print(f"🔍 EmailOTP: Checking response for OTP verification form...")
+            
+            # Debug: check if we got redirected or if there are any forms on the response page
+            forms_in_response = soup.find_all('form')
+            print(f"🔍 EmailOTP: Response has {len(forms_in_response)} forms")
+            
+            # Check for any error messages
+            error_elements = soup.find_all(['div', 'span', 'p'], class_=re.compile(r'error|alert|warning', re.I))
+            if error_elements:
+                print(f"🔍 EmailOTP: Found potential error messages:")
+                for elem in error_elements[:3]:  # Limit to first 3
+                    print(f"  - {elem.get_text(strip=True)}")
+            
             otp_form = self._find_otp_verification_form(soup)
             
             if otp_form:
+                print(f"🔍 EmailOTP: Found explicit OTP verification form")
                 return AuthResult(
                     success=False,  # Not complete yet
                     response=response,
@@ -169,13 +298,30 @@ class EmailOTPPlugin(BaseAuthPlugin):
                     }
                 )
             else:
-                # Check for error messages
-                error_msg = self._extract_error_message(soup)
-                return AuthResult(
-                    success=False,
-                    response=response,
-                    error_message=error_msg or "Email OTP submission failed"
-                )
+                print(f"🔍 EmailOTP: No explicit OTP form found, but response was successful")
+                # If we got a successful response (200) and we're still on the login page,
+                # assume the email was sent and we should proceed with OTP verification
+                if response.status_code == 200:
+                    print(f"🔍 EmailOTP: Assuming email OTP was sent successfully, proceeding with code verification")
+                    return AuthResult(
+                        success=False,  # Not complete yet
+                        response=response,
+                        requires_additional_steps=True,
+                        step_type="email_otp",
+                        step_data={
+                            "verification_url": response.url,
+                            "form_action": "/login",  # Assume same endpoint
+                            "email": username
+                        }
+                    )
+                else:
+                    # Check for error messages
+                    error_msg = self._extract_error_message(soup)
+                    return AuthResult(
+                        success=False,
+                        response=response,
+                        error_message=error_msg or f"Email OTP submission failed (status: {response.status_code})"
+                    )
                 
         except Exception as e:
             return AuthResult(

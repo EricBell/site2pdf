@@ -364,7 +364,7 @@ def scrape(base_url: str,
             # Standard scraping mode
             click.echo(f"🚀 Starting to scrape: {base_url}")
             scraper = WebScraper(app_config, exclude_patterns=exclude_patterns, verbose=verbose, 
-                               cache_session_id=resume, auth_username=auth_username, auth_password=auth_password)
+                               cache_session_id=resume, auth_username=auth_username, auth_password=auth_password, auth_type=auth_type)
             try:
                 scraped_data = scraper.scrape_website(base_url)
             finally:

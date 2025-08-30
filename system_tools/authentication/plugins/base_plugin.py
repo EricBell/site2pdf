@@ -208,8 +208,14 @@ class BaseAuthPlugin(ABC):
         
         # Add username
         if form.username_field:
-            field_name = form.username_field.get('name', 'username')
+            field_name = form.username_field.get('name')
+            if not field_name:
+                # Try common email field names when name is missing
+                common_email_names = ['email', 'username', 'user', 'login', 'identifier']
+                field_name = 'email'  # Default for email fields
+                print(f"🔍 BasePlugin: Email field has no name, using '{field_name}' as fallback")
             form_data[field_name] = username
+            print(f"🔍 BasePlugin: Added field '{field_name}' = '{username}'")
         
         # Add password
         if form.password_field:

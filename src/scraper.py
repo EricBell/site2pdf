@@ -121,6 +121,9 @@ class WebScraper:
             
         # Check excluded patterns from config
         for pattern in self.config['filters']['exclude_patterns']:
+            # Skip login exclusion patterns when authentication is enabled
+            if self.auth_enabled and pattern in ['/login.*', r'/login.*', '/logout.*', r'/logout.*']:
+                continue
             if re.search(pattern, url):
                 self.logger.debug(f"URL excluded by config pattern {pattern}: {url}")
                 return False
@@ -247,6 +250,10 @@ class WebScraper:
     def discover_urls(self, base_url: str) -> Tuple[List[str], Dict[str, 'ContentType']]:
         """Discover all URLs to be scraped (for dry-run mode)."""
         self.base_domain = urlparse(base_url).netloc
+        
+        # Setup authentication before discovery if enabled (needed for preview mode)
+        if self.auth_enabled and not self.auth_manager:
+            self._setup_authentication(base_url)
         
         # Initialize path scoping
         if not self.path_scope:
@@ -421,6 +428,8 @@ class WebScraper:
             self.auth_manager = AuthenticationManager(base_url, cache_dir=cache_dir, config=auth_config)
             
             # Authenticate
+            if self.verbose:
+                print(f"🔍 Authenticating with: username='{self.auth_username}', auth_type='{self.auth_type}'")
             auth_session = self.auth_manager.authenticate(
                 username=self.auth_username,
                 password=self.auth_password,
@@ -434,10 +443,32 @@ class WebScraper:
                 print(f"🔐 Authentication successful for {self.auth_manager.domain}")
                 
         except Exception as e:
-            self.logger.error(f"Authentication failed: {str(e)}")
+            auth_details = []
+            auth_details.append(f"Target Site: {urlparse(base_url).netloc}")
+            if self.auth_type:
+                auth_details.append(f"Authentication Type: {self.auth_type}")
+            if self.auth_username:
+                auth_details.append(f"Username/Email: {self.auth_username}")
+            if hasattr(self, 'auth_manager') and self.auth_manager:
+                try:
+                    login_url = self.auth_manager.site_url
+                    auth_details.append(f"Login URL: {login_url}")
+                except:
+                    pass
+            
+            detailed_error = f"Authentication failed: {str(e)}\n" + \
+                           "Authentication Details:\n" + \
+                           "\n".join(f"  - {detail}" for detail in auth_details)
+            
+            self.logger.error(detailed_error)
             if self.verbose:
-                print(f"❌ Authentication failed: {str(e)}")
-            # Continue without authentication
+                print(f"❌ {detailed_error}")
+            
+            # If auth parameters were explicitly provided, this is a hard failure
+            if self.auth_username or self.auth_password or self.auth_type:
+                raise Exception(detailed_error) from e
+            
+            # Otherwise, continue without authentication (for config-based auth only)
             self.auth_enabled = False
 
     def scrape_website(self, base_url: str) -> List[Dict[str, Any]]:
