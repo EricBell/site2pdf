@@ -210,9 +210,39 @@ class MarkdownGenerator(BaseGenerator):
         """Generate a single markdown file with all content"""
         
         if not output_filename:
-            domain = urlparse(base_url).netloc.replace('www.', '').replace('.', '_')
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"{domain}_{timestamp}.md"
+            # Extract filename from URL path (same logic as PDF generator)
+            try:
+                parsed_url = urlparse(base_url)
+                path = parsed_url.path.strip('/')
+                
+                if not path:
+                    # Use domain name if no path
+                    domain = parsed_url.netloc.replace('www.', '')
+                    output_filename = re.sub(r'[^\w\-]', '_', domain) + '.md'
+                else:
+                    # Get the last part of the path
+                    parts = path.split('/')
+                    last_part = parts[-1]
+                    
+                    # Clean the filename - remove invalid characters
+                    import re
+                    clean_filename = re.sub(r'[^\w\-]', '-', last_part)
+                    # Remove multiple consecutive dashes
+                    clean_filename = re.sub(r'-+', '-', clean_filename)
+                    # Remove leading/trailing dashes
+                    clean_filename = clean_filename.strip('-')
+                    
+                    # Fallback if cleaning resulted in empty string
+                    if not clean_filename:
+                        domain = parsed_url.netloc.replace('www.', '')
+                        clean_filename = re.sub(r'[^\w\-]', '_', domain)
+                    
+                    output_filename = f"{clean_filename}.md"
+            except Exception:
+                # Fallback to domain + timestamp if URL parsing fails
+                domain = urlparse(base_url).netloc.replace('www.', '').replace('.', '_')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"{domain}_{timestamp}.md"
         
         # Ensure .md extension
         if not output_filename.endswith('.md'):

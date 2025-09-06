@@ -1,7 +1,9 @@
 import logging
 import os
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
+from urllib.parse import urlparse
 from weasyprint import HTML, CSS
 from weasyprint.text.fonts import FontConfiguration
 import tempfile
@@ -43,6 +45,40 @@ class PDFGenerator(BaseGenerator):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.font_config = FontConfiguration()
+    
+    def _extract_filename_from_url(self, url: str) -> str:
+        """Extract a filename from the last part of the URL path."""
+        try:
+            parsed_url = urlparse(url)
+            path = parsed_url.path.strip('/')
+            
+            if not path:
+                # Use domain name if no path
+                domain = parsed_url.netloc.replace('www.', '')
+                return re.sub(r'[^\w\-]', '_', domain)
+            
+            # Get the last part of the path
+            parts = path.split('/')
+            last_part = parts[-1]
+            
+            # Clean the filename - remove invalid characters
+            clean_filename = re.sub(r'[^\w\-]', '-', last_part)
+            # Remove multiple consecutive dashes
+            clean_filename = re.sub(r'-+', '-', clean_filename)
+            # Remove leading/trailing dashes
+            clean_filename = clean_filename.strip('-')
+            
+            # Fallback if cleaning resulted in empty string
+            if not clean_filename:
+                domain = parsed_url.netloc.replace('www.', '')
+                clean_filename = re.sub(r'[^\w\-]', '_', domain)
+                
+            return clean_filename
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to extract filename from URL {url}: {e}")
+            # Fallback to default
+            return "scraped_website"
     
     def generate(self, scraped_data: List[Dict[str, Any]], output_path: str, **kwargs) -> bool:
         """Generate PDF from scraped data (BaseGenerator interface)."""
@@ -873,8 +909,15 @@ class PDFGenerator(BaseGenerator):
                 tmp_html_path = tmp_file.name
                 
             try:
-                # Generate PDF
+                # Generate PDF with URL-based filename if using default
                 output_filename = self.config['pdf']['output_filename']
+                
+                # If using the default filename, create one from the URL
+                if output_filename == 'scraped_website.pdf':
+                    url_filename = self._extract_filename_from_url(base_url)
+                    output_filename = f"{url_filename}.pdf"
+                    self.logger.info(f"Using URL-based filename: {output_filename}")
+                
                 output_dir = self.config['directories']['output_dir']
                 output_path = os.path.join(output_dir, output_filename)
                 
