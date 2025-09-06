@@ -152,14 +152,24 @@ class JavaScriptAuthMixin:
                     return self._create_chrome_driver()
                 elif attempt_browser == 'firefox':
                     return self._create_firefox_driver()
-            except WebDriverException as e:
-                logger.warning(f"Failed to create {attempt_browser} WebDriver: {e}")
+            except Exception as e:
+                # Classify the error type for better handling
+                error_msg = str(e).lower()
+                if "timeout" in error_msg or "read timed out" in error_msg:
+                    logger.warning(f"{attempt_browser} WebDriver timed out: {e}")
+                    logger.warning("This is common in WSL environments due to display server issues")
+                elif "connection" in error_msg:
+                    logger.warning(f"{attempt_browser} WebDriver connection failed: {e}")
+                else:
+                    logger.warning(f"Failed to create {attempt_browser} WebDriver: {e}")
+                
                 if attempt_browser != browsers_to_try[-1]:  # Not the last attempt
                     logger.info(f"Trying fallback browser...")
                     continue
         
         # All browsers failed - suggest manual intervention
-        logger.error("🚫 All browser automation failed. Consider manual intervention mode.")
+        logger.error("🚫 All browser automation failed. Switching to manual intervention mode.")
+        logger.error("💡 Common causes: WSL display issues, browser startup timeouts, missing dependencies")
         return None
     
     def _setup_wsl_display(self) -> bool:
@@ -179,44 +189,75 @@ class JavaScriptAuthMixin:
             logger.debug("Not in WSL environment, skipping display setup")
             return True
         
+        logger.info("🐧 WSL environment detected")
+        
+        # Force headless mode in WSL for better reliability
+        if not self.js_config['headless']:
+            logger.info("🖥️ Forcing headless mode for WSL compatibility")
+            self.js_config['headless'] = True
+        
         # For headless mode, we don't need a display server
         if self.js_config['headless']:
-            logger.debug("Headless mode in WSL, no display setup needed")
+            logger.debug("Headless mode configured, no display server needed")
             return True
         
-        # Check if DISPLAY is set
+        # Check if DISPLAY is already set
         if os.environ.get('DISPLAY'):
-            logger.debug(f"DISPLAY already set: {os.environ['DISPLAY']}")
+            logger.debug(f"DISPLAY already configured: {os.environ['DISPLAY']}")
             return True
         
-        # Try to setup Xvfb virtual display
+        # Try to setup Xvfb virtual display (fallback option)
         try:
-            logger.info("Setting up virtual display for WSL...")
+            logger.info("🖼️ Attempting virtual display setup...")
             
-            # Install xvfb if not available
-            subprocess.run(['which', 'Xvfb'], check=True, capture_output=True)
+            # Check if Xvfb is available
+            try:
+                subprocess.run(['which', 'Xvfb'], check=True, capture_output=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                logger.warning("Xvfb not available. Install with: sudo apt install xvfb")
+                raise FileNotFoundError("Xvfb not found")
             
-            # Start Xvfb on display :99
-            xvfb_cmd = ['Xvfb', ':99', '-screen', '0', '1920x1080x24', '-ac', '+extension', 'GLX']
-            subprocess.Popen(xvfb_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Kill any existing Xvfb on :99
+            try:
+                subprocess.run(['pkill', '-f', 'Xvfb.*:99'], capture_output=True)
+            except:
+                pass  # Ignore if no existing process
+            
+            # Start Xvfb on display :99 with better options for stability
+            xvfb_cmd = [
+                'Xvfb', ':99', 
+                '-screen', '0', '1920x1080x24',
+                '-ac',  # Disable access control
+                '+extension', 'GLX',
+                '-nolisten', 'tcp',
+                '-dpi', '96'
+            ]
+            
+            xvfb_process = subprocess.Popen(
+                xvfb_cmd, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid  # Start in new process group
+            )
             
             # Set DISPLAY environment variable
             os.environ['DISPLAY'] = ':99'
             
-            # Give Xvfb a moment to start
+            # Give Xvfb time to initialize
             import time
-            time.sleep(2)
+            time.sleep(3)
             
-            logger.info("Virtual display setup complete: DISPLAY=:99")
-            return True
+            # Verify Xvfb is running
+            if xvfb_process.poll() is None:
+                logger.info("✅ Virtual display setup complete: DISPLAY=:99")
+                return True
+            else:
+                logger.warning("⚠️ Xvfb process terminated unexpectedly")
+                raise Exception("Xvfb failed to start")
             
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logger.warning("Xvfb not available, switching to headless mode")
-            self.js_config['headless'] = True
-            return True
         except Exception as e:
-            logger.error(f"Failed to setup virtual display: {e}")
-            logger.warning("Falling back to headless mode")
+            logger.warning(f"Virtual display setup failed: {e}")
+            logger.info("🔄 Ensuring headless mode is enabled")
             self.js_config['headless'] = True
             return True
     
@@ -350,12 +391,22 @@ class JavaScriptAuthMixin:
         return driver
     
     def _create_firefox_driver(self) -> Optional[webdriver.Firefox]:
-        """Create Firefox WebDriver"""
+        """Create Firefox WebDriver with improved WSL compatibility and timeout handling"""
         options = FirefoxOptions()
         
-        # Configure options
-        if self.js_config['headless']:
+        # Force headless mode in WSL environments for better compatibility
+        import os
+        is_wsl = False
+        try:
+            with open('/proc/version', 'r') as f:
+                proc_version = f.read().lower()
+                is_wsl = 'microsoft' in proc_version or 'wsl' in proc_version
+        except:
+            pass
+            
+        if is_wsl or self.js_config['headless']:
             options.add_argument('--headless')
+            logger.info("🖥️ Using headless mode (WSL detected or configured)")
         
         # Set window size
         width, height = self.js_config['window_size']
@@ -373,24 +424,113 @@ class JavaScriptAuthMixin:
         options.set_preference("browser.startup.page", 0)  # Blank startup page
         options.set_preference("browser.sessionstore.resume_from_crash", False)
         
-        # WSL-specific preferences
+        # WSL-specific preferences for faster startup
         options.set_preference("media.navigator.permission.disabled", True)
         options.set_preference("dom.file.createInChild", True)
+        options.set_preference("extensions.blocklist.enabled", False)  # Disable extension blocklist
+        options.set_preference("browser.safebrowsing.enabled", False)  # Disable safe browsing
+        options.set_preference("browser.safebrowsing.malware.enabled", False)
+        options.set_preference("browser.ping-centre.telemetry", False)  # Disable telemetry
+        options.set_preference("datareporting.healthreport.service.enabled", False)
+        options.set_preference("datareporting.healthreport.uploadEnabled", False)
+        options.set_preference("datareporting.policy.dataSubmissionEnabled", False)
+        options.set_preference("app.update.enabled", False)  # Disable auto-updates
+        options.set_preference("browser.startup.homepage", "about:blank")  # Fast startup
+        options.set_preference("startup.homepage_welcome_url", "")
+        options.set_preference("startup.homepage_welcome_url.additional", "")
+        
+        # Additional performance optimizations
+        options.set_preference("browser.cache.disk.enable", False)
+        options.set_preference("browser.cache.memory.enable", True)
+        options.set_preference("browser.cache.offline.enable", False)
+        options.set_preference("network.http.use-cache", False)
         
         try:
-            # Create driver
-            service = FirefoxService(GeckoDriverManager().install())
-            driver = webdriver.Firefox(service=service, options=options)
+            logger.info("📥 Getting GeckoDriver...")
+            geckodriver_path = GeckoDriverManager().install()
+            logger.info(f"✅ GeckoDriver ready: {geckodriver_path}")
             
-            # Configure timeouts
-            driver.implicitly_wait(self.js_config['implicit_wait'])
-            driver.set_page_load_timeout(self.js_config['timeout'])
+            # Create service with reduced timeout
+            service = FirefoxService(geckodriver_path)
             
-            logger.info(f"🦊 Created Firefox WebDriver (headless={self.js_config['headless']})")
-            return driver
+            logger.info("🚀 Starting Firefox WebDriver (this may take 30-60 seconds)...")
+            
+            # Create driver with aggressive timeout handling
+            import socket
+            import threading
+            import time
+            from selenium.common.exceptions import TimeoutException, WebDriverException
+            
+            # Set aggressive timeout for WSL environments
+            timeout_seconds = 20  # Reduced from 30 to 20 seconds
+            
+            def create_driver_with_timeout():
+                """Create WebDriver in a separate thread with timeout"""
+                result = {'driver': None, 'error': None}
+                
+                def driver_creation():
+                    try:
+                        original_timeout = socket.getdefaulttimeout()
+                        socket.setdefaulttimeout(timeout_seconds)
+                        
+                        logger.info(f"⏱️ Starting Firefox with {timeout_seconds}s timeout...")
+                        driver = webdriver.Firefox(service=service, options=options)
+                        
+                        # Configure driver timeouts
+                        driver.implicitly_wait(self.js_config['implicit_wait'])
+                        driver.set_page_load_timeout(self.js_config['timeout'])
+                        
+                        result['driver'] = driver
+                        socket.setdefaulttimeout(original_timeout)
+                        
+                    except Exception as e:
+                        result['error'] = e
+                        if 'original_timeout' in locals():
+                            socket.setdefaulttimeout(original_timeout)
+                
+                # Start driver creation in thread
+                thread = threading.Thread(target=driver_creation, daemon=True)
+                thread.start()
+                
+                # Wait for completion with timeout
+                thread.join(timeout_seconds + 5)  # Extra 5 seconds buffer
+                
+                if thread.is_alive():
+                    logger.error(f"🚫 Firefox startup exceeded {timeout_seconds}s timeout")
+                    result['error'] = TimeoutError(f"Firefox startup timeout after {timeout_seconds} seconds")
+                
+                return result
+            
+            try:
+                result = create_driver_with_timeout()
+                
+                if result['driver']:
+                    logger.info(f"🦊 Firefox WebDriver created successfully (headless={options.headless})")
+                    return result['driver']
+                elif result['error']:
+                    raise result['error']
+                else:
+                    raise TimeoutError("Firefox WebDriver creation failed - unknown error")
+                
+            except (TimeoutException, TimeoutError, socket.timeout) as timeout_error:
+                logger.error(f"🕐 Firefox WebDriver startup timeout: {timeout_error}")
+                logger.error("💡 This timeout is common in WSL environments")
+                logger.error("💡 Falling back to manual intervention mode")
+                raise timeout_error
+            except WebDriverException as wd_error:
+                error_msg = str(wd_error).lower()
+                if "timeout" in error_msg or "read timed out" in error_msg:
+                    logger.error(f"🕐 Firefox WebDriver connection timeout: {wd_error}")
+                    logger.error("💡 Firefox startup is too slow for WSL environment")
+                else:
+                    logger.error(f"🚫 Firefox WebDriver error: {wd_error}")
+                raise wd_error
             
         except Exception as e:
             logger.error(f"Firefox WebDriver creation failed: {e}")
+            if "timeout" in str(e).lower():
+                logger.error("💡 Suggestion: This timeout is often caused by WSL display issues")
+                logger.error("💡 Manual intervention mode will be available as fallback")
             raise e
     
     def _setup_screenshot_session(self):
