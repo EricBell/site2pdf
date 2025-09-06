@@ -26,10 +26,14 @@ python run.py scrape https://example.com --auth email_otp --username your-email@
 
 ### Interactive Flow
 
-When using email OTP authentication, you'll see prompts like:
+When using email OTP authentication, you'll see progress indicators and prompts like:
 
 ```
+🔍 EmailOTP: Waiting for page response..........
+🔍 EmailOTP: Checking for success indicators...
+🔍 EmailOTP: ✅ Email OTP request appears successful!
 📧 Verification code sent to your-email@example.com
+🕒 Please check your email and enter the verification code below...
 📧 A verification code has been sent to your email. Please enter the code: 123456
 ```
 
