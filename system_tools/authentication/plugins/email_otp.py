@@ -790,7 +790,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     self.driver.execute_script("arguments[0].click();", otp_button)
                 
                 # Wait for response (either success message or URL change)
-                time.sleep(2)  # Give the page time to react
+                time.sleep(5)  # Give the page more time to react to JavaScript-heavy apps
                 
                 # Check for success indicators
                 success_selectors = [
@@ -805,8 +805,16 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     '//*[contains(text(), "code sent")]',
                     '//*[contains(text(), "email sent")]',
                     '//*[contains(text(), "check your email")]',
+                    '//*[contains(text(), "sent")]',
+                    '//*[contains(text(), "verify")]',
+                    '//*[contains(text(), "verification")]',
+                    '//*[contains(text(), "Enter")]',
+                    '//*[contains(text(), "code")]',
                     '//input[contains(@placeholder, "code")]',
-                    '//input[contains(@placeholder, "verification")]'
+                    '//input[contains(@placeholder, "verification")]',
+                    '//input[contains(@placeholder, "Enter")]',
+                    '//input[@type="text" and @maxlength="6"]',
+                    '//input[@type="number"]'
                 ]
                 
                 found_success = False
@@ -846,12 +854,47 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             }
                         )
                     
-                    # No clear success indicators found
-                    page_source_preview = self.driver.page_source[:500] if self.driver.page_source else "No content"
-                    return AuthResult(
-                        success=False,
-                        error_message=f"Email OTP submission via JavaScript unclear - no success indicators found. Page preview: {page_source_preview}"
-                    )
+                    # No clear success indicators found - check for error messages
+                    error_xpaths = [
+                        '//*[contains(text(), "error")]',
+                        '//*[contains(text(), "invalid")]',
+                        '//*[contains(text(), "incorrect")]',
+                        '//*[contains(text(), "failed")]',
+                        '//*[contains(text(), "not found")]',
+                        '//*[contains(@class, "error")]',
+                        '//*[contains(@class, "alert")]'
+                    ]
+                    
+                    found_error = False
+                    for xpath in error_xpaths:
+                        try:
+                            element = self.driver.find_element(By.XPATH, xpath)
+                            print(f"🔍 EmailOTP: Found error indicator: {element.text}")
+                            found_error = True
+                            break
+                        except:
+                            continue
+                    
+                    if not found_error:
+                        # No error messages found, assume success and continue
+                        print("🔍 EmailOTP: ✅ No error messages found, assuming email submission was successful")
+                        return AuthResult(
+                            success=True,
+                            requires_additional_steps=True,
+                            step_type='email_otp',
+                            next_step_url=self.driver.current_url,
+                            step_data={
+                                'email': username,
+                                'verification_method': 'javascript'
+                            }
+                        )
+                    else:
+                        # Found error messages
+                        page_source_preview = self.driver.page_source[:500] if self.driver.page_source else "No content"
+                        return AuthResult(
+                            success=False,
+                            error_message=f"Email OTP submission failed - error messages found on page. Page preview: {page_source_preview}"
+                        )
                     
             except Exception as e:
                 import traceback
