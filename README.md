@@ -65,6 +65,26 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 
 ### Installation
 
+### Prerequisites
+
+For authentication features (email OTP, JavaScript-dependent forms), you need Chrome browser installed:
+
+```bash
+# Add Google Chrome repository
+wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+# Update package list and install Chrome
+sudo apt update
+sudo apt install google-chrome-stable
+```
+
+Alternatively, you can install Firefox:
+```bash
+sudo apt update
+sudo apt install firefox
+```
+
 ### Option 1: From Source (Development)
 
 1. Clone the repository:

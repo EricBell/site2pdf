@@ -73,7 +73,25 @@ class JavaScriptAuthMixin:
         import subprocess
         import os
         
-        # Check for portable/extracted Chrome first
+        # Check for system-installed browsers first (more reliable)
+        browsers_to_try = [
+            ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
+            ('firefox', ['firefox', 'firefox-esr']),
+        ]
+        
+        for browser_type, commands in browsers_to_try:
+            for cmd in commands:
+                try:
+                    subprocess.run([cmd, '--version'], capture_output=True, check=True)
+                    logger.info(f"Found {browser_type} browser: {cmd}")
+                    # Clear any portable Chrome binary path when using system browser
+                    if 'chrome_binary_path' in self.js_config:
+                        del self.js_config['chrome_binary_path']
+                    return browser_type
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    continue
+        
+        # Check for portable/extracted Chrome as fallback
         portable_chrome_paths = [
             '/tmp/chrome_extracted/opt/google/chrome/chrome',
             '/tmp/chrome/chrome',
@@ -85,21 +103,6 @@ class JavaScriptAuthMixin:
                 logger.info(f"Found portable Chrome browser: {chrome_path}")
                 self.js_config['chrome_binary_path'] = chrome_path
                 return 'chrome'
-        
-        # Check for system-installed browsers
-        browsers_to_try = [
-            ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
-            ('firefox', ['firefox', 'firefox-esr']),
-        ]
-        
-        for browser_type, commands in browsers_to_try:
-            for cmd in commands:
-                try:
-                    subprocess.run([cmd, '--version'], capture_output=True, check=True)
-                    logger.info(f"Found {browser_type} browser: {cmd}")
-                    return browser_type
-                except (subprocess.CalledProcessError, FileNotFoundError):
-                    continue
         
         return None
     
@@ -162,8 +165,31 @@ class JavaScriptAuthMixin:
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-logging')
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
+        options.add_argument('--disable-features=TranslateUI')
+        options.add_argument('--disable-ipc-flooding-protection')
+        options.add_argument('--remote-debugging-port=9222')
+        options.add_argument('--disable-web-security')
+        options.add_argument('--disable-features=VizDisplayCompositor')
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--allow-running-insecure-content')
+        options.add_argument('--ignore-ssl-errors')
+        options.add_argument('--ignore-certificate-errors-spki-list')
+        options.add_argument('--disable-extensions-except')
+        options.add_argument('--disable-plugins-discovery')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-dev-tools')
+        options.add_argument('--no-first-run')
+        options.add_argument('--no-service-autorun')
+        options.add_argument('--password-store=basic')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        options.add_experimental_option("detach", True)
         
         # Set window size
         width, height = self.js_config['window_size']
@@ -177,23 +203,37 @@ class JavaScriptAuthMixin:
         try:
             # Get Chrome version to match ChromeDriver
             chrome_version = None
-            if self.js_config.get('chrome_binary_path'):
-                import subprocess
-                result = subprocess.run([self.js_config['chrome_binary_path'], '--version'], 
+            import subprocess
+            
+            # Try to get version from system Chrome or custom binary
+            chrome_command = self.js_config.get('chrome_binary_path', 'google-chrome')
+            try:
+                result = subprocess.run([chrome_command, '--version'], 
                                       capture_output=True, text=True)
                 if result.returncode == 0:
                     version_output = result.stdout.strip()
-                    # Extract major version (e.g., "139" from "Google Chrome 139.0.7258.154")
+                    # Extract major version (e.g., "140" from "Google Chrome 140.0.7339.80")
                     import re
                     version_match = re.search(r'(\d+)\.', version_output)
                     if version_match:
                         chrome_version = version_match.group(1)
                         logger.info(f"Detected Chrome major version: {chrome_version}")
+            except FileNotFoundError:
+                logger.warning(f"Could not get Chrome version from: {chrome_command}")
             
             # Install matching ChromeDriver
             import os
             chromedriver_path = None
-            if chrome_version and chrome_version == "139":
+            
+            # For Chrome versions that are too new, skip version-specific downloads
+            # and let webdriver-manager handle it
+            if chrome_version and chrome_version == "131":
+                # Use pre-downloaded matching ChromeDriver for Chrome 131
+                manual_chromedriver_path = "/tmp/chromedriver-linux64/chromedriver"
+                if os.path.exists(manual_chromedriver_path):
+                    chromedriver_path = manual_chromedriver_path
+                    logger.info(f"Using manually downloaded ChromeDriver {chrome_version}")
+            elif chrome_version and chrome_version == "139":
                 # Use pre-downloaded matching ChromeDriver for Chrome 139
                 manual_chromedriver_path = "/tmp/chromedriver-linux64/chromedriver"
                 if os.path.exists(manual_chromedriver_path):
@@ -201,13 +241,14 @@ class JavaScriptAuthMixin:
                     logger.info(f"Using manually downloaded ChromeDriver {chrome_version}")
                     
             if not chromedriver_path:
-                # Fallback to webdriver-manager
+                # Use webdriver-manager to get the latest compatible ChromeDriver
                 try:
-                    chromedriver_path = ChromeDriverManager(chrome_type="chrome-for-testing").install()
-                    logger.info(f"Using Chrome for Testing ChromeDriver")
-                except Exception as cft_error:
-                    logger.warning(f"Chrome for Testing failed: {cft_error}")
+                    logger.info("Using webdriver-manager to get compatible ChromeDriver")
                     chromedriver_path = ChromeDriverManager().install()
+                    logger.info(f"Downloaded ChromeDriver via webdriver-manager")
+                except Exception as wdm_error:
+                    logger.error(f"ChromeDriver installation failed: {wdm_error}")
+                    raise wdm_error
                 
             service = ChromeService(chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
