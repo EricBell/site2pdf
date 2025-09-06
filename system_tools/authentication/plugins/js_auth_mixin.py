@@ -79,22 +79,24 @@ class JavaScriptAuthMixin:
         import subprocess
         import os
         
-        # Check for system-installed browsers first (more reliable)
+        # Prefer Firefox first as it's more stable in WSL environments
         browsers_to_try = [
-            ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
             ('firefox', ['firefox', 'firefox-esr']),
+            ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
         ]
         
         for browser_type, commands in browsers_to_try:
             for cmd in commands:
                 try:
-                    subprocess.run([cmd, '--version'], capture_output=True, check=True)
-                    logger.info(f"Found {browser_type} browser: {cmd}")
+                    result = subprocess.run([cmd, '--version'], capture_output=True, check=True, text=True)
+                    version = result.stdout.strip()
+                    logger.info(f"Found {browser_type} browser: {cmd} - {version}")
                     # Clear any portable Chrome binary path when using system browser
                     if 'chrome_binary_path' in self.js_config:
                         del self.js_config['chrome_binary_path']
                     return browser_type
                 except (subprocess.CalledProcessError, FileNotFoundError):
+                    logger.debug(f"Browser check failed for: {cmd}")
                     continue
         
         # Check for portable/extracted Chrome as fallback
@@ -110,11 +112,19 @@ class JavaScriptAuthMixin:
                 self.js_config['chrome_binary_path'] = chrome_path
                 return 'chrome'
         
+        logger.error("No browser found. Install one of:")
+        logger.error("  Firefox: sudo apt install firefox")
+        logger.error("  Chrome: sudo apt install google-chrome-stable")
         return None
     
     def _create_driver(self) -> Optional[webdriver.Remote]:
         """Create and configure WebDriver (Chrome or Firefox)"""
         if not self._check_selenium_availability():
+            return None
+        
+        # Setup WSL display if needed
+        if not self._setup_wsl_display():
+            logger.error("Failed to setup display for browser automation")
             return None
         
         # Determine which browser to use
@@ -128,32 +138,87 @@ class JavaScriptAuthMixin:
             logger.error("  - Firefox: sudo apt install firefox")
             return None
         
+        # Try browsers in order of preference with fallback
+        browsers_to_try = [browser_type]
+        if browser_type == 'chrome':
+            browsers_to_try.append('firefox')
+        elif browser_type == 'firefox':
+            browsers_to_try.append('chrome')
+        
+        for attempt_browser in browsers_to_try:
+            try:
+                logger.info(f"Attempting to create {attempt_browser} WebDriver...")
+                if attempt_browser == 'chrome':
+                    return self._create_chrome_driver()
+                elif attempt_browser == 'firefox':
+                    return self._create_firefox_driver()
+            except WebDriverException as e:
+                logger.warning(f"Failed to create {attempt_browser} WebDriver: {e}")
+                if attempt_browser != browsers_to_try[-1]:  # Not the last attempt
+                    logger.info(f"Trying fallback browser...")
+                    continue
+        
+        # All browsers failed - suggest manual intervention
+        logger.error("🚫 All browser automation failed. Consider manual intervention mode.")
+        return None
+    
+    def _setup_wsl_display(self) -> bool:
+        """Setup display for WSL environment if needed"""
+        import os
+        import subprocess
+        
+        # Check if we're in WSL
         try:
-            if browser_type == 'chrome':
-                return self._create_chrome_driver()
-            elif browser_type == 'firefox':
-                return self._create_firefox_driver()
-            else:
-                logger.error(f"Unsupported browser type: {browser_type}")
-                return None
-                
-        except WebDriverException as e:
-            logger.error(f"Failed to create {browser_type} WebDriver: {e}")
+            with open('/proc/version', 'r') as f:
+                proc_version = f.read().lower()
+                is_wsl = 'microsoft' in proc_version or 'wsl' in proc_version
+        except:
+            is_wsl = False
+        
+        if not is_wsl:
+            logger.debug("Not in WSL environment, skipping display setup")
+            return True
+        
+        # For headless mode, we don't need a display server
+        if self.js_config['headless']:
+            logger.debug("Headless mode in WSL, no display setup needed")
+            return True
+        
+        # Check if DISPLAY is set
+        if os.environ.get('DISPLAY'):
+            logger.debug(f"DISPLAY already set: {os.environ['DISPLAY']}")
+            return True
+        
+        # Try to setup Xvfb virtual display
+        try:
+            logger.info("Setting up virtual display for WSL...")
             
-            # Try the other browser as fallback
-            fallback = 'firefox' if browser_type == 'chrome' else 'chrome'
-            if self._detect_available_browser() == fallback:
-                logger.info(f"Trying {fallback} as fallback...")
-                try:
-                    if fallback == 'chrome':
-                        return self._create_chrome_driver()
-                    else:
-                        return self._create_firefox_driver()
-                except WebDriverException:
-                    pass
+            # Install xvfb if not available
+            subprocess.run(['which', 'Xvfb'], check=True, capture_output=True)
             
-            logger.error("Failed to create WebDriver with any available browser")
-            return None
+            # Start Xvfb on display :99
+            xvfb_cmd = ['Xvfb', ':99', '-screen', '0', '1920x1080x24', '-ac', '+extension', 'GLX']
+            subprocess.Popen(xvfb_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Set DISPLAY environment variable
+            os.environ['DISPLAY'] = ':99'
+            
+            # Give Xvfb a moment to start
+            import time
+            time.sleep(2)
+            
+            logger.info("Virtual display setup complete: DISPLAY=:99")
+            return True
+            
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("Xvfb not available, switching to headless mode")
+            self.js_config['headless'] = True
+            return True
+        except Exception as e:
+            logger.error(f"Failed to setup virtual display: {e}")
+            logger.warning("Falling back to headless mode")
+            self.js_config['headless'] = True
+            return True
     
     def _create_chrome_driver(self) -> Optional[webdriver.Chrome]:
         """Create Chrome WebDriver"""
@@ -164,35 +229,38 @@ class JavaScriptAuthMixin:
             options.binary_location = self.js_config['chrome_binary_path']
             logger.info(f"Using Chrome binary: {self.js_config['chrome_binary_path']}")
         
-        # Configure options
+        # Configure options for WSL/Linux environment
         if self.js_config['headless']:
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')  # Use new headless mode
         
+        # Essential WSL compatibility options
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-extensions')
-        options.add_argument('--disable-logging')
+        options.add_argument('--disable-gpu')  # Important for WSL
+        options.add_argument('--remote-debugging-port=9222')
+        options.add_argument('--disable-software-rasterizer')
         options.add_argument('--disable-background-timer-throttling')
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
-        options.add_argument('--disable-features=TranslateUI')
+        options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
+        
+        # Additional stability options
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-logging')
         options.add_argument('--disable-ipc-flooding-protection')
-        options.add_argument('--remote-debugging-port=9222')
         options.add_argument('--disable-web-security')
-        options.add_argument('--disable-features=VizDisplayCompositor')
         options.add_argument('--ignore-certificate-errors')
         options.add_argument('--allow-running-insecure-content')
         options.add_argument('--ignore-ssl-errors')
         options.add_argument('--ignore-certificate-errors-spki-list')
-        options.add_argument('--disable-extensions-except')
         options.add_argument('--disable-plugins-discovery')
-        options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_argument('--disable-dev-tools')
         options.add_argument('--no-first-run')
         options.add_argument('--no-service-autorun')
         options.add_argument('--password-store=basic')
+        options.add_argument('--single-process')  # Can help with WSL stability
+        options.add_argument('--disable-zygote')  # Reduces process complexity
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_experimental_option("detach", True)
@@ -298,20 +366,32 @@ class JavaScriptAuthMixin:
         if self.js_config.get('user_agent'):
             options.set_preference("general.useragent.override", self.js_config["user_agent"])
         
-        # Disable automation indicators
+        # Disable automation indicators and improve stability
         options.set_preference("dom.webdriver.enabled", False)
         options.set_preference("useAutomationExtension", False)
+        options.set_preference("marionette.logging", 0)  # Reduce logging
+        options.set_preference("browser.startup.page", 0)  # Blank startup page
+        options.set_preference("browser.sessionstore.resume_from_crash", False)
         
-        # Create driver
-        service = FirefoxService(GeckoDriverManager().install())
-        driver = webdriver.Firefox(service=service, options=options)
+        # WSL-specific preferences
+        options.set_preference("media.navigator.permission.disabled", True)
+        options.set_preference("dom.file.createInChild", True)
         
-        # Configure timeouts
-        driver.implicitly_wait(self.js_config['implicit_wait'])
-        driver.set_page_load_timeout(self.js_config['timeout'])
-        
-        logger.info(f"🚀 Created Firefox WebDriver (headless={self.js_config['headless']})")
-        return driver
+        try:
+            # Create driver
+            service = FirefoxService(GeckoDriverManager().install())
+            driver = webdriver.Firefox(service=service, options=options)
+            
+            # Configure timeouts
+            driver.implicitly_wait(self.js_config['implicit_wait'])
+            driver.set_page_load_timeout(self.js_config['timeout'])
+            
+            logger.info(f"🦊 Created Firefox WebDriver (headless={self.js_config['headless']})")
+            return driver
+            
+        except Exception as e:
+            logger.error(f"Firefox WebDriver creation failed: {e}")
+            raise e
     
     def _setup_screenshot_session(self):
         """Setup screenshot session directory"""

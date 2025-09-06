@@ -1,5 +1,14 @@
-I think I need have pictures taken from the website as each step progresses so I can
-figure out why the email isn't getting to me.
+Test geckodriver download:
+  python -c "from webdriver_manager.firefox import GeckoDriverManager; print(GeckoDriverManager().install())"
 
-The first time I ran this with eb.net I got an email which was not a OTP, it was a sign up email.
-The 2nd time I ran it no email at all.
+  What This Enables
+
+  With Firefox installed, the authentication system will:
+  1. ✅ Try Firefox first (more stable in WSL)
+  2. ❌ Fall back to Chrome if Firefox fails
+  3. 🧑‍💻 Fall back to manual intervention if both fail
+
+  Firefox generally works much better than Chrome in WSL environments, so this should resolve the "unable to connect to renderer" errors
+  you've been experiencing.
+
+  

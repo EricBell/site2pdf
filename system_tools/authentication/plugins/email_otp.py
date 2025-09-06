@@ -692,8 +692,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         # Create WebDriver context
         with self as js_context:
             if not self.driver:
-                print(f"🔍 EmailOTP: Browser automation failed, trying direct API approach")
-                return self._attempt_direct_api_authentication(username, form)
+                print(f"🔍 EmailOTP: Browser automation failed, switching to manual intervention mode")
+                return self._attempt_manual_authentication(username, form)
             
             try:
                 # Navigate to login page
@@ -1444,12 +1444,137 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         except Exception as e:
             print(f"🔍 EmailOTP: Form validation analysis failed: {e}")
     
+    def _attempt_manual_authentication(self, username: str, form) -> AuthResult:
+        """
+        Manual intervention mode - launch browser for user to complete authentication manually
+        """
+        print("🧑‍💻 EmailOTP: Starting manual intervention mode")
+        print(f"Browser automation failed. Please complete authentication manually.")
+        
+        try:
+            import subprocess
+            import webbrowser
+            import os
+            import tempfile
+            import time
+            
+            # Try to open browser for user
+            login_url = form.action_url
+            print(f"\n📋 Manual Authentication Instructions:")
+            print(f"   1. Please open your browser and navigate to: {login_url}")
+            print(f"   2. Enter your email: {username}")
+            print(f"   3. Complete the email OTP authentication process")
+            print(f"   4. Once logged in, copy the final authenticated URL")
+            print(f"   5. Return here and paste the URL when prompted")
+            
+            try:
+                # Try to open browser automatically
+                webbrowser.open(login_url)
+                print(f"✅ Opened browser automatically")
+            except Exception as browser_error:
+                print(f"⚠️  Could not open browser automatically: {browser_error}")
+                print(f"   Please manually navigate to: {login_url}")
+            
+            # Wait for user to complete authentication
+            print(f"\n⏳ Waiting for you to complete authentication...")
+            
+            # Prompt user for the final authenticated URL
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    authenticated_url = input(f"\nPlease enter the final URL after successful authentication (attempt {attempt + 1}/{max_attempts}): ").strip()
+                    
+                    if not authenticated_url:
+                        print("❌ Empty URL provided")
+                        continue
+                    
+                    if not authenticated_url.startswith('http'):
+                        print("❌ Invalid URL format (should start with http/https)")
+                        continue
+                    
+                    # Validate the URL by making a request
+                    import requests
+                    session = requests.Session()
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    })
+                    
+                    print(f"🔍 Validating authenticated URL...")
+                    response = session.get(authenticated_url, timeout=10)
+                    
+                    if response.status_code == 200:
+                        # Check if this looks like an authenticated page
+                        content_lower = response.text.lower()
+                        
+                        # Look for signs this is NOT a login page
+                        login_indicators = ['login', 'sign in', 'sign-in', 'signin', 'password', 'email']
+                        auth_indicators = ['dashboard', 'profile', 'logout', 'log out', 'welcome', 'account']
+                        
+                        login_count = sum(1 for indicator in login_indicators if indicator in content_lower)
+                        auth_count = sum(1 for indicator in auth_indicators if indicator in content_lower)
+                        
+                        if auth_count > login_count or authenticated_url != login_url:
+                            print(f"✅ Authentication appears successful!")
+                            
+                            # Extract cookies from the session
+                            cookies = session.cookies
+                            
+                            return AuthResult(
+                                success=True,
+                                message=f"Manual authentication completed successfully",
+                                session_cookies=dict(cookies),
+                                next_step_url=authenticated_url,
+                                response=response
+                            )
+                        else:
+                            print(f"⚠️  URL appears to still be on login page. Please ensure authentication is complete.")
+                            if attempt < max_attempts - 1:
+                                continue
+                    else:
+                        print(f"❌ URL returned status code {response.status_code}")
+                        if attempt < max_attempts - 1:
+                            continue
+                
+                except KeyboardInterrupt:
+                    print(f"\n⛔ Manual authentication cancelled by user")
+                    return AuthResult(
+                        success=False,
+                        error_message="Manual authentication cancelled by user"
+                    )
+                except Exception as validation_error:
+                    print(f"❌ Error validating URL: {validation_error}")
+                    if attempt < max_attempts - 1:
+                        continue
+            
+            # All attempts failed
+            print(f"\n❌ Manual authentication failed after {max_attempts} attempts")
+            return AuthResult(
+                success=False,
+                error_message=f"Manual authentication failed after {max_attempts} attempts"
+            )
+            
+        except Exception as e:
+            print(f"❌ Manual authentication error: {e}")
+            return AuthResult(
+                success=False,
+                error_message=f"Manual authentication error: {str(e)}"
+            )
+
     def _attempt_direct_api_authentication(self, username: str, form) -> AuthResult:
         """
         Attempt direct API calls without browser automation
         This is a fallback when browser automation fails
         """
         print("🔍 EmailOTP: Attempting direct API authentication (no browser)")
+        
+        # Setup debug directory even without browser
+        import os
+        from datetime import datetime
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        debug_dir = f"debug_screenshots/direct_api_{timestamp}"
+        os.makedirs(debug_dir, exist_ok=True)
+        print(f"📁 Direct API debug logs: {debug_dir}")
         
         try:
             import requests
@@ -1504,42 +1629,85 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             except Exception as e:
                 print(f"🔍 EmailOTP: Failed to get login page: {e}")
             
-            # Try different payload formats
-            payloads = [
-                {"email": username},
-                {"username": username},
-                {"user": username, "action": "send_otp"},
-                {"email": username, "type": "otp"},
-                {"email": username, "method": "email"},
+            # Try different payload formats and content types
+            test_cases = [
+                # JSON payloads
+                ({"email": username}, "application/json"),
+                ({"username": username}, "application/json"),
+                ({"user": username, "action": "send_otp"}, "application/json"),
+                ({"email": username, "type": "otp"}, "application/json"),
+                ({"email": username, "method": "email"}, "application/json"),
+                # Form-encoded payloads
+                ({"email": username}, "application/x-www-form-urlencoded"),
+                ({"username": username}, "application/x-www-form-urlencoded"),
+                ({"user": username, "action": "send_otp"}, "application/x-www-form-urlencoded"),
             ]
             
             success = False
             for endpoint in api_endpoints:
                 print(f"🔍 EmailOTP: Trying endpoint: {endpoint}")
                 
-                for payload in payloads:
+                for payload, content_type in test_cases:
                     try:
                         # Add CSRF token to payload if we found one
+                        test_payload = payload.copy()
                         if csrf_token:
-                            payload['_token'] = csrf_token
+                            test_payload['_token'] = csrf_token
+                        
+                        # Set appropriate content type and send request
+                        session.headers['Content-Type'] = content_type
+                        
+                        if content_type == "application/json":
+                            response = session.post(endpoint, json=test_payload, timeout=30)
+                        else:  # form-encoded
+                            response = session.post(endpoint, data=test_payload, timeout=30)
                             
-                        response = session.post(endpoint, json=payload, timeout=30)
-                        print(f"  📤 Payload: {payload}")
+                        print(f"  📤 Payload: {test_payload} ({content_type})")
                         print(f"  📥 Response: {response.status_code}")
                         
-                        # Check for success indicators
+                        # Check for success indicators (be more specific to avoid false positives)
                         if response.status_code in [200, 201, 202]:
                             response_text = response.text.lower()
-                            success_indicators = [
-                                'sent', 'success', 'code', 'email', 'otp', 'verification',
-                                'check your email', 'magic link', 'one-time'
+                            
+                            # More specific success indicators
+                            specific_success_indicators = [
+                                'code sent', 'email sent', 'verification sent', 'otp sent',
+                                'check your email', 'magic link sent', 'one-time code sent',
+                                'sent you a', 'verification code has been sent',
+                                'check your inbox'
                             ]
                             
-                            if any(indicator in response_text for indicator in success_indicators):
-                                print(f"🔍 EmailOTP: ✅ Success indicator found in response!")
+                            # Avoid false positives from generic words
+                            generic_avoid = [
+                                'enter your email', 'welcome back', 'login', 'sign in',
+                                'password', 'forgot', 'create account'
+                            ]
+                            
+                            # Log response for debugging
+                            log_file = os.path.join(debug_dir, f"response_{endpoint.replace('/', '_').replace(':', '')}.txt")
+                            with open(log_file, 'w') as f:
+                                f.write(f"Endpoint: {endpoint}\n")
+                                f.write(f"Payload: {payload}\n")
+                                f.write(f"Status: {response.status_code}\n")
+                                f.write(f"Headers: {dict(response.headers)}\n")
+                                f.write(f"Response: {response.text}\n")
+                            
+                            found_specific = any(indicator in response_text for indicator in specific_success_indicators)
+                            has_generic = any(avoid in response_text for avoid in generic_avoid)
+                            
+                            if found_specific and not has_generic:
+                                print(f"🔍 EmailOTP: ✅ Specific success indicator found!")
                                 print(f"🔍 EmailOTP: Response preview: {response.text[:200]}...")
                                 success = True
                                 break
+                            elif found_specific and has_generic:
+                                print(f"🔍 EmailOTP: ⚠️ Mixed signals - specific success indicator found but also generic login content")
+                                print(f"🔍 EmailOTP: Response preview: {response.text[:200]}...")
+                            else:
+                                print(f"🔍 EmailOTP: ❌ No specific success indicators found")
+                                if response_text.count('email') > 5:  # Likely just login page
+                                    print(f"🔍 EmailOTP: Response appears to be login page (many 'email' references)")
+                                print(f"🔍 EmailOTP: Response preview: {response.text[:200]}...")
                                 
                         # Also check for obvious error responses
                         if response.status_code >= 400:
@@ -1567,7 +1735,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             else:
                 return AuthResult(
                     success=False,
-                    error_message=f"Direct API authentication failed: No successful endpoint found. Tried {len(api_endpoints)} endpoints with {len(payloads)} payload formats."
+                    error_message=f"Direct API authentication failed: No successful endpoint found. Tried {len(api_endpoints)} endpoints with {len(test_cases)} payload combinations."
                 )
                 
         except ImportError:

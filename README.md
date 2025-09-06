@@ -67,8 +67,39 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 
 ### Prerequisites
 
-For authentication features (email OTP, JavaScript-dependent forms), you need Chrome browser installed:
+#### Browser Requirements for Authentication
 
+For authentication features (email OTP, JavaScript-dependent forms), you need a browser installed. The system uses **intelligent browser detection** with automatic fallbacks:
+
+**🦊 Firefox (Highly Recommended for WSL/Linux):**
+```bash
+# Install Firefox - best compatibility with WSL environments
+sudo apt update
+sudo apt install firefox
+
+# Verify installation
+firefox --version
+```
+
+**🟦 Alternative: Firefox ESR (Extended Support Release):**
+```bash
+# If standard Firefox package is not available
+sudo apt install firefox-esr
+```
+
+**🔧 Python Dependencies:**
+```bash
+# Required for browser automation (install these regardless of browser choice)
+pip install selenium webdriver-manager
+```
+
+**🖥️ WSL/Headless Environment Support:**
+```bash
+# For virtual display support (optional - enables non-headless mode in WSL)
+sudo apt install xvfb dbus-x11
+```
+
+**🌐 Chrome Alternative (May Have WSL Compatibility Issues):**
 ```bash
 # Add Google Chrome repository
 wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -78,15 +109,53 @@ echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sud
 sudo apt update
 sudo apt install google-chrome-stable
 ```
-This is an extra step:
-pip install selenium webdriver-manager
 
+#### 🔄 Authentication Flow Fallbacks
 
-Alternatively, you can install Firefox:
+The system automatically handles browser failures with progressive fallbacks:
+
+1. **🦊 Firefox WebDriver** (Primary) - Best WSL compatibility
+2. **🌐 Chrome WebDriver** (Secondary) - Fallback if Firefox unavailable  
+3. **🧑‍💻 Manual Intervention Mode** (Final fallback) - Guides user through manual authentication
+
+#### ✅ Verification Commands
+
+**Test Firefox installation:**
 ```bash
-sudo apt update
-sudo apt install firefox
+which firefox && echo "✅ Firefox found" || echo "❌ Firefox not found"
 ```
+
+**Test browser automation setup:**
+```bash
+python -c "
+from selenium import webdriver
+from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.firefox.service import Service
+options = webdriver.FirefoxOptions()
+options.add_argument('--headless')
+try:
+    service = Service(GeckoDriverManager().install())
+    driver = webdriver.Firefox(service=service, options=options)
+    print('✅ Firefox WebDriver working')
+    driver.quit()
+except Exception as e:
+    print(f'❌ Firefox WebDriver failed: {e}')
+"
+```
+
+#### 🚨 Troubleshooting
+
+**Common Issues:**
+- **"Firefox not found"**: Install using the commands above
+- **"geckodriver not found"**: The `webdriver-manager` package handles this automatically
+- **WSL display issues**: The system auto-configures virtual display or uses headless mode
+- **All automation fails**: Manual intervention mode provides step-by-step guidance
+
+**Manual Intervention Mode Features:**
+- 🌐 Automatically opens browser to login URL
+- 📋 Step-by-step authentication instructions  
+- 🔍 Validates completed authentication
+- 🍪 Extracts session cookies for continued use
 
 ### Option 1: From Source (Development)
 
