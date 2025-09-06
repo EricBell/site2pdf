@@ -738,11 +738,93 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     self._take_debug_screenshot("after_email_input_normal", f"Entered email normally: {username}")
                 except Exception as interact_error:
                     print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {str(interact_error).split('Stacktrace:')[0].strip()}")
-                    # Fallback to JavaScript interaction
-                    self.driver.execute_script(f"arguments[0].value = '{username}';", email_input)
-                    self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", email_input)
-                    print(f"🔍 EmailOTP: Entered email via JavaScript: {username}")
-                    self._take_debug_screenshot("after_email_input_js", f"Entered email via JavaScript: {username}")
+                    # Multiple JavaScript approaches to set email value
+                    success = False
+                    
+                    # Approach 1: Direct value setting with multiple events
+                    try:
+                        self.driver.execute_script(f"""
+                            arguments[0].value = '{username}';
+                            arguments[0].focus();
+                            arguments[0].dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            arguments[0].dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            arguments[0].blur();
+                        """, email_input)
+                        
+                        # Verify the value was set
+                        actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
+                        if actual_value == username:
+                            success = True
+                            print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 1: {username}")
+                        else:
+                            print(f"🔍 EmailOTP: ⚠️ JavaScript approach 1 failed - got '{actual_value}', expected '{username}'")
+                    except Exception as e:
+                        print(f"🔍 EmailOTP: JavaScript approach 1 failed: {e}")
+                    
+                    # Approach 2: Character-by-character input simulation
+                    if not success:
+                        try:
+                            self.driver.execute_script("arguments[0].value = '';", email_input)
+                            self.driver.execute_script("arguments[0].focus();", email_input)
+                            
+                            for char in username:
+                                self.driver.execute_script(f"""
+                                    var event = new KeyboardEvent('keydown', {{ key: '{char}', bubbles: true }});
+                                    arguments[0].dispatchEvent(event);
+                                    arguments[0].value += '{char}';
+                                    var inputEvent = new Event('input', {{ bubbles: true }});
+                                    arguments[0].dispatchEvent(inputEvent);
+                                """, email_input)
+                                time.sleep(0.05)  # Small delay between characters
+                            
+                            self.driver.execute_script("arguments[0].blur();", email_input)
+                            
+                            # Verify
+                            actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
+                            if actual_value == username:
+                                success = True
+                                print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 2: {username}")
+                            else:
+                                print(f"🔍 EmailOTP: ⚠️ JavaScript approach 2 failed - got '{actual_value}', expected '{username}'")
+                        except Exception as e:
+                            print(f"🔍 EmailOTP: JavaScript approach 2 failed: {e}")
+                    
+                    # Approach 3: React/Vue component direct manipulation
+                    if not success:
+                        try:
+                            self.driver.execute_script(f"""
+                                // Try React approach
+                                var input = arguments[0];
+                                var lastValue = input.value;
+                                input.value = '{username}';
+                                var event = new Event('input', {{ target: input, bubbles: true }});
+                                event.simulated = true;
+                                var tracker = input._valueTracker;
+                                if (tracker) {{
+                                    tracker.setValue(lastValue);
+                                }}
+                                input.dispatchEvent(event);
+                                
+                                // Also try Vue approach
+                                if (input.__vue__) {{
+                                    input.__vue__.$emit('input', '{username}');
+                                }}
+                            """, email_input)
+                            
+                            # Verify
+                            actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
+                            if actual_value == username:
+                                success = True
+                                print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 3 (React/Vue): {username}")
+                            else:
+                                print(f"🔍 EmailOTP: ⚠️ JavaScript approach 3 failed - got '{actual_value}', expected '{username}'")
+                        except Exception as e:
+                            print(f"🔍 EmailOTP: JavaScript approach 3 failed: {e}")
+                    
+                    if not success:
+                        print(f"🔍 EmailOTP: ❌ All JavaScript approaches failed to set email value")
+                    
+                    self._take_debug_screenshot("after_email_input_js", f"Email input attempts completed - success: {success}")
                 
                 # Find and click OTP button
                 otp_button_selectors = [
@@ -786,17 +868,171 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 print(f"🔍 EmailOTP: Clicking OTP button...")
                 self._take_debug_screenshot("before_button_click", "About to click OTP button")
                 
+                button_clicked = False
+                form_submitted = False
+                
                 try:
                     # Try normal click
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", otp_button)
                     time.sleep(0.5)
                     otp_button.click()
+                    button_clicked = True
                     self._take_debug_screenshot("after_button_click_normal", "Clicked OTP button normally")
+                    print(f"🔍 EmailOTP: ✅ Button clicked normally")
                 except Exception as click_error:
                     print(f"🔍 EmailOTP: Normal button click failed, trying JavaScript: {str(click_error).split('Stacktrace:')[0].strip()}")
-                    # Fallback to JavaScript click
-                    self.driver.execute_script("arguments[0].click();", otp_button)
-                    self._take_debug_screenshot("after_button_click_js", "Clicked OTP button via JavaScript")
+                
+                # Multiple JavaScript approaches for button click and form submission
+                if not button_clicked:
+                    try:
+                        # JavaScript click
+                        self.driver.execute_script("arguments[0].click();", otp_button)
+                        button_clicked = True
+                        self._take_debug_screenshot("after_button_click_js", "Clicked OTP button via JavaScript")
+                        print(f"🔍 EmailOTP: ✅ Button clicked via JavaScript")
+                    except Exception as js_error:
+                        print(f"🔍 EmailOTP: JavaScript button click failed: {js_error}")
+                
+                # Try multiple form submission approaches
+                print(f"🔍 EmailOTP: Attempting form submission...")
+                
+                # Approach 1: Find and submit the form directly
+                try:
+                    form_element = self.driver.execute_script("""
+                        var button = arguments[0];
+                        var form = button.closest('form');
+                        if (form) {
+                            return form;
+                        }
+                        // Fallback - find any form on page
+                        var forms = document.querySelectorAll('form');
+                        return forms.length > 0 ? forms[0] : null;
+                    """, otp_button)
+                    
+                    if form_element:
+                        # Verify email value is set in form
+                        email_value = self.driver.execute_script("""
+                            var form = arguments[0];
+                            var emailInput = form.querySelector('input[type="email"], input[name*="email"], input[placeholder*="email" i]');
+                            return emailInput ? emailInput.value : null;
+                        """, form_element)
+                        
+                        if email_value == username:
+                            print(f"🔍 EmailOTP: ✅ Email value confirmed in form: {email_value}")
+                        else:
+                            print(f"🔍 EmailOTP: ⚠️ Email value in form: '{email_value}', expected: '{username}'")
+                            # Try to set it again directly on the form
+                            self.driver.execute_script(f"""
+                                var form = arguments[0];
+                                var emailInput = form.querySelector('input[type="email"], input[name*="email"], input[placeholder*="email" i]');
+                                if (emailInput) {{
+                                    emailInput.value = '{username}';
+                                    emailInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                    emailInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                                }}
+                            """, form_element)
+                        
+                        # Submit the form
+                        self.driver.execute_script("arguments[0].submit();", form_element)
+                        form_submitted = True
+                        print(f"🔍 EmailOTP: ✅ Form submitted directly")
+                        self._take_debug_screenshot("after_form_submit", "Form submitted directly")
+                        
+                    else:
+                        print(f"🔍 EmailOTP: ⚠️ No form element found for direct submission")
+                except Exception as form_error:
+                    print(f"🔍 EmailOTP: Form submission approach 1 failed: {form_error}")
+                
+                # Approach 2: Trigger button events manually  
+                if not form_submitted:
+                    try:
+                        self.driver.execute_script("""
+                            var button = arguments[0];
+                            
+                            // Trigger mouse events
+                            var mouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+                            var mouseUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true });
+                            var click = new MouseEvent('click', { bubbles: true, cancelable: true });
+                            
+                            button.dispatchEvent(mouseDown);
+                            button.dispatchEvent(mouseUp);
+                            button.dispatchEvent(click);
+                            
+                            // If button has onclick handler, try to call it
+                            if (button.onclick) {
+                                button.onclick();
+                            }
+                            
+                            // Look for any form and submit it
+                            var forms = document.querySelectorAll('form');
+                            for (var i = 0; i < forms.length; i++) {
+                                var form = forms[i];
+                                var emailInput = form.querySelector('input[type="email"]');
+                                if (emailInput && emailInput.value) {
+                                    form.submit();
+                                    break;
+                                }
+                            }
+                        """, otp_button)
+                        
+                        form_submitted = True
+                        print(f"🔍 EmailOTP: ✅ Form submission via event triggering completed")
+                        self._take_debug_screenshot("after_event_submit", "Form submission via events")
+                        
+                    except Exception as event_error:
+                        print(f"🔍 EmailOTP: Event-based form submission failed: {event_error}")
+                
+                # Approach 3: Look for AJAX/fetch calls
+                if not form_submitted:
+                    try:
+                        result = self.driver.execute_script(f"""
+                            // Try to find and trigger any fetch/AJAX calls
+                            var button = arguments[0];
+                            var form = button.closest('form');
+                            
+                            if (form) {{
+                                var formData = new FormData(form);
+                                
+                                // Make sure email is in the form data
+                                var emailFound = false;
+                                for (var pair of formData.entries()) {{
+                                    if (pair[0].toLowerCase().includes('email')) {{
+                                        emailFound = true;
+                                        break;
+                                    }}
+                                }}
+                                
+                                if (!emailFound) {{
+                                    formData.append('email', '{username}');
+                                }}
+                                
+                                // Try to submit via fetch to the same URL
+                                fetch(window.location.href, {{
+                                    method: 'POST',
+                                    body: formData
+                                }}).then(response => {{
+                                    console.log('Manual fetch submitted', response.status);
+                                }}).catch(err => {{
+                                    console.log('Manual fetch failed', err);
+                                }});
+                                
+                                return 'Manual fetch attempted';
+                            }}
+                            
+                            return 'No form found for manual fetch';
+                        """, otp_button)
+                        
+                        print(f"🔍 EmailOTP: Manual fetch result: {result}")
+                        form_submitted = True
+                        self._take_debug_screenshot("after_manual_fetch", "Manual fetch submission attempted")
+                        
+                    except Exception as fetch_error:
+                        print(f"🔍 EmailOTP: Manual fetch submission failed: {fetch_error}")
+                
+                if not form_submitted:
+                    print(f"🔍 EmailOTP: ❌ All form submission approaches failed")
+                else:
+                    print(f"🔍 EmailOTP: ✅ Form submission completed successfully")
                 
                 # Wait for response (either success message or URL change)
                 print("🔍 EmailOTP: Waiting for page response", end="", flush=True)
@@ -818,20 +1054,23 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     'input[placeholder*="verification" i]'
                 ]
                 
+                # More specific success indicators - avoid generic terms
                 success_xpaths = [
                     '//*[contains(text(), "code sent")]',
-                    '//*[contains(text(), "email sent")]',
+                    '//*[contains(text(), "email sent")]', 
                     '//*[contains(text(), "check your email")]',
-                    '//*[contains(text(), "sent")]',
-                    '//*[contains(text(), "verify")]',
-                    '//*[contains(text(), "verification")]',
-                    '//*[contains(text(), "Enter")]',
-                    '//*[contains(text(), "code")]',
-                    '//input[contains(@placeholder, "code")]',
-                    '//input[contains(@placeholder, "verification")]',
-                    '//input[contains(@placeholder, "Enter")]',
+                    '//*[contains(text(), "verification code")]',
+                    '//*[contains(text(), "one-time code")]',
+                    '//*[contains(text(), "magic link")]',
+                    '//*[contains(text(), "sent you")]',
+                    '//*[contains(text(), "check your inbox")]',
+                    '//input[contains(@placeholder, "verification code" )]',
+                    '//input[contains(@placeholder, "enter code")]',
+                    '//input[contains(@placeholder, "6-digit")]',
                     '//input[@type="text" and @maxlength="6"]',
-                    '//input[@type="number"]'
+                    '//input[@type="number" and @maxlength="6"]',
+                    '//div[contains(@class, "success")]',
+                    '//div[contains(@class, "sent")]'
                 ]
                 
                 found_success = False
@@ -858,14 +1097,40 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         }
                     )
                 else:
-                    # Check if URL changed (might indicate success)
-                    if self.driver.current_url != current_url:
-                        print(f"🔍 EmailOTP: URL changed to {self.driver.current_url} - might indicate success")
+                    # Check if URL changed to something meaningful (not just same page reload)
+                    current_page_url = self.driver.current_url
+                    if current_page_url != current_url and not current_page_url.endswith('/login'):
+                        print(f"🔍 EmailOTP: URL changed from {current_url} to {current_page_url} - indicates success")
                         return AuthResult(
                             success=True,
                             requires_additional_steps=True,
                             step_type='email_otp',
-                            next_step_url=self.driver.current_url,
+                            next_step_url=current_page_url,
+                            response=None,  # Explicitly set None for JS-based auth
+                            step_data={
+                                'email': username,
+                                'verification_method': 'javascript'
+                            }
+                        )
+                    
+                    # Check if page content significantly changed (not just a reload)
+                    page_title = self.driver.title
+                    page_text_sample = self.driver.execute_script("""
+                        return document.body ? document.body.innerText.substring(0, 200) : '';
+                    """)
+                    
+                    # Look for specific changes that indicate we moved past the login form
+                    if ('Welcome back!' not in page_text_sample and 
+                        'Enter your email' not in page_text_sample and
+                        len(page_text_sample.strip()) > 50):
+                        print(f"🔍 EmailOTP: Page content changed significantly - indicates success")
+                        print(f"🔍 EmailOTP: New page title: {page_title}")
+                        print(f"🔍 EmailOTP: New page sample: {page_text_sample[:100]}...")
+                        return AuthResult(
+                            success=True,
+                            requires_additional_steps=True,
+                            step_type='email_otp',
+                            next_step_url=current_page_url,
                             response=None,  # Explicitly set None for JS-based auth
                             step_data={
                                 'email': username,
