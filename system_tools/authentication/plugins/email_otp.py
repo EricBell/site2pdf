@@ -1521,10 +1521,12 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             
                             return AuthResult(
                                 success=True,
-                                message=f"Manual authentication completed successfully",
-                                session_cookies=dict(cookies),
+                                response=response,
                                 next_step_url=authenticated_url,
-                                response=response
+                                step_data={
+                                    'session_cookies': dict(cookies),
+                                    'message': 'Manual authentication completed successfully'
+                                }
                             )
                         else:
                             print(f"⚠️  URL appears to still be on login page. Please ensure authentication is complete.")
