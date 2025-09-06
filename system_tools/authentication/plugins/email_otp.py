@@ -795,6 +795,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     time.sleep(0.5)
                     print(".", end="", flush=True)
                 print()  # New line after dots
+                print("🔍 EmailOTP: Checking for success indicators...")
                 
                 # Check for success indicators
                 success_selectors = [
@@ -951,6 +952,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         if is_retry:
             prompt_text = "❓ Please enter the verification code from your email (or press Enter to cancel)"
         else:
+            print("📧 Verification code sent to your email!")
+            print("🕒 Please check your email and enter the verification code below...")
             prompt_text = "📧 A verification code has been sent to your email. Please enter the code"
         
         code = click.prompt(prompt_text, type=str, default="", show_default=False)

@@ -78,6 +78,9 @@ echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sud
 sudo apt update
 sudo apt install google-chrome-stable
 ```
+This is an extra step:
+pip install selenium webdriver-manager
+
 
 Alternatively, you can install Firefox:
 ```bash
