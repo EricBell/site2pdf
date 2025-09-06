@@ -692,10 +692,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         # Create WebDriver context
         with self as js_context:
             if not self.driver:
-                return AuthResult(
-                    success=False,
-                    error_message="Failed to initialize browser automation. Please ensure Chrome browser is installed and JavaScript dependencies are available. Run: python install_js_deps.py"
-                )
+                print(f"🔍 EmailOTP: Browser automation failed, trying direct API approach")
+                return self._attempt_direct_api_authentication(username, form)
             
             try:
                 # Navigate to login page
@@ -1445,6 +1443,143 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     
         except Exception as e:
             print(f"🔍 EmailOTP: Form validation analysis failed: {e}")
+    
+    def _attempt_direct_api_authentication(self, username: str, form) -> AuthResult:
+        """
+        Attempt direct API calls without browser automation
+        This is a fallback when browser automation fails
+        """
+        print("🔍 EmailOTP: Attempting direct API authentication (no browser)")
+        
+        try:
+            import requests
+            from urllib.parse import urljoin
+            
+            # Extract base URL from form action
+            base_url = form.action_url
+            if base_url.endswith('/login'):
+                base_url = base_url[:-6]
+            elif 'login' in base_url:
+                base_url = base_url.split('login')[0].rstrip('/')
+                
+            print(f"🔍 EmailOTP: Using base URL: {base_url}")
+            
+            # Try various API endpoints that might handle email OTP
+            api_endpoints = [
+                f"{base_url}/api/auth/otp/send",
+                f"{base_url}/api/otp/send", 
+                f"{base_url}/api/email-otp",
+                f"{base_url}/api/send-code",
+                f"{base_url}/auth/send-otp",
+                f"{base_url}/send-verification",
+                f"{base_url}/login",  # Original form endpoint
+            ]
+            
+            # Create session to maintain cookies
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.80 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            })
+            
+            # First, get the login page to extract any tokens or session info
+            print(f"🔍 EmailOTP: Getting login page for tokens...")
+            try:
+                login_response = session.get(f"{base_url}/login")
+                print(f"🔍 EmailOTP: Login page status: {login_response.status_code}")
+                
+                # Extract CSRF token if present
+                csrf_token = None
+                if 'csrf' in login_response.text.lower():
+                    import re
+                    csrf_match = re.search(r'csrf["\']?\s*:\s*["\']([^"\']+)["\']', login_response.text, re.IGNORECASE)
+                    if csrf_match:
+                        csrf_token = csrf_match.group(1)
+                        print(f"🔍 EmailOTP: Found CSRF token: {csrf_token[:20]}...")
+                        session.headers['X-CSRF-TOKEN'] = csrf_token
+                        
+            except Exception as e:
+                print(f"🔍 EmailOTP: Failed to get login page: {e}")
+            
+            # Try different payload formats
+            payloads = [
+                {"email": username},
+                {"username": username},
+                {"user": username, "action": "send_otp"},
+                {"email": username, "type": "otp"},
+                {"email": username, "method": "email"},
+            ]
+            
+            success = False
+            for endpoint in api_endpoints:
+                print(f"🔍 EmailOTP: Trying endpoint: {endpoint}")
+                
+                for payload in payloads:
+                    try:
+                        # Add CSRF token to payload if we found one
+                        if csrf_token:
+                            payload['_token'] = csrf_token
+                            
+                        response = session.post(endpoint, json=payload, timeout=30)
+                        print(f"  📤 Payload: {payload}")
+                        print(f"  📥 Response: {response.status_code}")
+                        
+                        # Check for success indicators
+                        if response.status_code in [200, 201, 202]:
+                            response_text = response.text.lower()
+                            success_indicators = [
+                                'sent', 'success', 'code', 'email', 'otp', 'verification',
+                                'check your email', 'magic link', 'one-time'
+                            ]
+                            
+                            if any(indicator in response_text for indicator in success_indicators):
+                                print(f"🔍 EmailOTP: ✅ Success indicator found in response!")
+                                print(f"🔍 EmailOTP: Response preview: {response.text[:200]}...")
+                                success = True
+                                break
+                                
+                        # Also check for obvious error responses
+                        if response.status_code >= 400:
+                            print(f"  ❌ Error response: {response.text[:100]}...")
+                            
+                    except Exception as e:
+                        print(f"  ❌ Request failed: {e}")
+                        continue
+                        
+                if success:
+                    break
+            
+            if success:
+                return AuthResult(
+                    success=True,
+                    requires_additional_steps=True,
+                    step_type='email_otp',
+                    next_step_url=f"{base_url}/login",
+                    response=None,
+                    step_data={
+                        'email': username,
+                        'verification_method': 'direct_api'
+                    }
+                )
+            else:
+                return AuthResult(
+                    success=False,
+                    error_message=f"Direct API authentication failed: No successful endpoint found. Tried {len(api_endpoints)} endpoints with {len(payloads)} payload formats."
+                )
+                
+        except ImportError:
+            return AuthResult(
+                success=False,
+                error_message="Direct API authentication requires 'requests' library. Please install: pip install requests"
+            )
+        except Exception as e:
+            return AuthResult(
+                success=False,
+                error_message=f"Direct API authentication failed: {e}"
+            )
     
     def _prompt_for_otp_code(self, is_retry: bool = False) -> str:
         """Interactive prompt for OTP code"""
