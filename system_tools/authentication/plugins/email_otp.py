@@ -703,6 +703,9 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 self.driver.get(form.action_url)
                 self._take_debug_screenshot("navigate_to_login", f"Navigated to {form.action_url}")
                 
+                # Analyze page for security tokens and hidden fields
+                self._analyze_page_security_tokens()
+                
                 # Find email input field
                 email_selectors = [
                     'input[type="email"]',
@@ -853,6 +856,12 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         otp_button = self.driver.find_element(By.XPATH, xpath)
                         print(f"🔍 EmailOTP: Found OTP button using xpath: {xpath}")
                         self._take_debug_screenshot("found_otp_button", f"Located OTP button: {xpath}")
+                        
+                        # Analyze JavaScript event handlers on the button
+                        self._analyze_button_handlers(otp_button)
+                        
+                        # Analyze form validation with email input
+                        self._analyze_form_validation(email_input, otp_button)
                         break
                     except:
                         continue
@@ -1033,6 +1042,9 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     print(f"🔍 EmailOTP: ❌ All form submission approaches failed")
                 else:
                     print(f"🔍 EmailOTP: ✅ Form submission completed successfully")
+                
+                # Log network requests after form submission
+                self._log_network_requests("form_submission")
                 
                 # Wait for response (either success message or URL change)
                 print("🔍 EmailOTP: Waiting for page response", end="", flush=True)
@@ -1223,6 +1235,216 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 return button
         
         return None
+    
+    def _analyze_button_handlers(self, button_element):
+        """Analyze JavaScript event handlers on the button"""
+        try:
+            analysis = self.driver.execute_script("""
+                var button = arguments[0];
+                var info = {
+                    onclick: button.onclick ? 'Has onclick handler' : 'No onclick handler',
+                    eventListeners: 'Unknown - cannot access getEventListeners',
+                    formAction: '',
+                    buttonType: button.type || 'not specified',
+                    buttonName: button.name || 'not specified',
+                    buttonId: button.id || 'not specified',
+                    className: button.className || 'not specified',
+                    parentForm: null,
+                    formMethod: '',
+                    formAction: '',
+                    reactProps: 'No React detected',
+                    vueInstance: 'No Vue detected'
+                };
+                
+                // Check for parent form
+                var form = button.closest('form');
+                if (form) {
+                    info.parentForm = 'Found';
+                    info.formMethod = form.method || 'GET';
+                    info.formAction = form.action || 'Current URL';
+                }
+                
+                // Check for React
+                if (button._reactInternalInstance || button._reactInternals) {
+                    info.reactProps = 'React component detected';
+                }
+                
+                // Check for Vue
+                if (button.__vue__) {
+                    info.vueInstance = 'Vue component detected';
+                }
+                
+                // Try to detect framework-specific attributes
+                var attrs = {};
+                for (var i = 0; i < button.attributes.length; i++) {
+                    var attr = button.attributes[i];
+                    if (attr.name.startsWith('data-') || attr.name.startsWith('@') || attr.name.startsWith('v-')) {
+                        attrs[attr.name] = attr.value;
+                    }
+                }
+                info.frameworkAttrs = attrs;
+                
+                return info;
+            """, button_element)
+            
+            print("🔍 EmailOTP: Button Analysis:")
+            for key, value in analysis.items():
+                if value and value != 'not specified':
+                    print(f"  {key}: {value}")
+                    
+        except Exception as e:
+            print(f"🔍 EmailOTP: Button analysis failed: {e}")
+    
+    def _analyze_page_security_tokens(self):
+        """Analyze page for CSRF tokens, meta tags, and hidden fields"""
+        try:
+            token_info = self.driver.execute_script("""
+                var info = {
+                    csrfTokens: [],
+                    metaTags: {},
+                    hiddenInputs: [],
+                    cookies: document.cookie,
+                    localStorage: {},
+                    sessionStorage: {}
+                };
+                
+                // Find CSRF tokens in meta tags
+                var metaTags = document.querySelectorAll('meta[name*="csrf"], meta[name*="token"], meta[name*="_token"]');
+                metaTags.forEach(function(meta) {
+                    info.metaTags[meta.name] = meta.content;
+                    info.csrfTokens.push({
+                        source: 'meta',
+                        name: meta.name,
+                        value: meta.content
+                    });
+                });
+                
+                // Find hidden inputs with tokens
+                var hiddenInputs = document.querySelectorAll('input[type="hidden"]');
+                hiddenInputs.forEach(function(input) {
+                    var entry = {
+                        name: input.name || 'unnamed',
+                        value: input.value || '',
+                        id: input.id || 'no-id'
+                    };
+                    info.hiddenInputs.push(entry);
+                    
+                    // Check if this looks like a CSRF token
+                    if (input.name && (input.name.toLowerCase().includes('csrf') || 
+                        input.name.toLowerCase().includes('token') || 
+                        input.name === '_token')) {
+                        info.csrfTokens.push({
+                            source: 'hidden_input',
+                            name: input.name,
+                            value: input.value
+                        });
+                    }
+                });
+                
+                // Check localStorage and sessionStorage
+                try {
+                    for (var i = 0; i < localStorage.length; i++) {
+                        var key = localStorage.key(i);
+                        if (key.toLowerCase().includes('token') || key.toLowerCase().includes('csrf')) {
+                            info.localStorage[key] = localStorage.getItem(key);
+                        }
+                    }
+                    
+                    for (var i = 0; i < sessionStorage.length; i++) {
+                        var key = sessionStorage.key(i);
+                        if (key.toLowerCase().includes('token') || key.toLowerCase().includes('csrf')) {
+                            info.sessionStorage[key] = sessionStorage.getItem(key);
+                        }
+                    }
+                } catch(e) {
+                    info.storageError = e.message;
+                }
+                
+                return info;
+            """)
+            
+            print("🔍 EmailOTP: Security Token Analysis:")
+            
+            if token_info.get('csrfTokens'):
+                print("  CSRF Tokens found:")
+                for token in token_info['csrfTokens']:
+                    print(f"    {token['source']}: {token['name']} = {token['value'][:20]}...")
+            else:
+                print("  No CSRF tokens found")
+                
+            if token_info.get('hiddenInputs'):
+                print(f"  Hidden inputs: {len(token_info['hiddenInputs'])} found")
+                for hidden in token_info['hiddenInputs'][:5]:  # Show first 5
+                    print(f"    {hidden['name']} = {str(hidden['value'])[:30]}...")
+            
+            if token_info.get('metaTags'):
+                print("  Meta tags:")
+                for name, content in token_info['metaTags'].items():
+                    print(f"    {name} = {content[:30]}...")
+            
+            # Store for later use
+            self._security_tokens = token_info
+            
+        except Exception as e:
+            print(f"🔍 EmailOTP: Security token analysis failed: {e}")
+            self._security_tokens = {}
+    
+    def _analyze_form_validation(self, email_input, otp_button):
+        """Analyze form validation requirements"""
+        try:
+            validation_info = self.driver.execute_script("""
+                var email = arguments[0];
+                var button = arguments[1];
+                var form = button.closest('form') || email.closest('form');
+                
+                var info = {
+                    emailRequired: email.required,
+                    emailPattern: email.pattern || 'No pattern',
+                    emailValidation: 'Unknown',
+                    formValidation: 'Unknown',
+                    submitDisabled: button.disabled,
+                    customValidation: []
+                };
+                
+                // Check HTML5 validation
+                if (email.checkValidity) {
+                    try {
+                        info.emailValidation = email.checkValidity() ? 'Valid' : 'Invalid';
+                        if (!email.checkValidity()) {
+                            info.emailValidationMessage = email.validationMessage;
+                        }
+                    } catch(e) {
+                        info.emailValidation = 'Validation check failed';
+                    }
+                }
+                
+                // Check form validation
+                if (form && form.checkValidity) {
+                    try {
+                        info.formValidation = form.checkValidity() ? 'Valid' : 'Invalid';
+                    } catch(e) {
+                        info.formValidation = 'Form validation check failed';
+                    }
+                }
+                
+                // Look for common validation frameworks
+                if (window.jQuery) {
+                    info.customValidation.push('jQuery detected');
+                }
+                if (window.Validator || window.FormValidation) {
+                    info.customValidation.push('Custom validation library detected');
+                }
+                
+                return info;
+            """, email_input, otp_button)
+            
+            print("🔍 EmailOTP: Form Validation Analysis:")
+            for key, value in validation_info.items():
+                if value and value != 'Unknown':
+                    print(f"  {key}: {value}")
+                    
+        except Exception as e:
+            print(f"🔍 EmailOTP: Form validation analysis failed: {e}")
     
     def _prompt_for_otp_code(self, is_retry: bool = False) -> str:
         """Interactive prompt for OTP code"""

@@ -197,6 +197,12 @@ class JavaScriptAuthMixin:
         options.add_experimental_option('useAutomationExtension', False)
         options.add_experimental_option("detach", True)
         
+        # Network logging capabilities (comment out if causing crashes)
+        # options.set_capability('goog:loggingPrefs', {
+        #     'performance': 'INFO',
+        #     'browser': 'INFO'
+        # })
+        
         # Set window size
         width, height = self.js_config['window_size']
         options.add_argument(f'--window-size={width},{height}')
@@ -316,6 +322,74 @@ class JavaScriptAuthMixin:
         self.screenshot_session_dir = f"debug_screenshots/auth_{timestamp}"
         os.makedirs(self.screenshot_session_dir, exist_ok=True)
         logger.info(f"📸 Debug screenshots enabled: {self.screenshot_session_dir}")
+        
+        # Setup network logging
+        self._setup_network_logging()
+    
+    def _setup_network_logging(self):
+        """Enable Chrome DevTools Protocol network logging"""
+        if not self.driver:
+            return
+            
+        try:
+            # Enable network domain
+            self.driver.execute_cdp_cmd('Network.enable', {})
+            self.network_requests = []
+            
+            # Add event listener for network requests
+            self.driver.execute_cdp_cmd('Runtime.enable', {})
+            
+            logger.info("🌐 Network request logging enabled")
+            
+        except Exception as e:
+            logger.warning(f"Failed to enable network logging: {e}")
+    
+    def _log_network_requests(self, step_name: str):
+        """Log captured network requests for debugging"""
+        if not self.driver:
+            return
+            
+        try:
+            # Get network activity
+            logs = self.driver.get_log('performance')
+            
+            network_events = []
+            for log_entry in logs:
+                message = log_entry.get('message', {})
+                if isinstance(message, str):
+                    import json
+                    try:
+                        message = json.loads(message)
+                    except:
+                        continue
+                        
+                method = message.get('message', {}).get('method', '')
+                params = message.get('message', {}).get('params', {})
+                
+                if method in ['Network.requestWillBeSent', 'Network.responseReceived']:
+                    network_events.append({
+                        'method': method,
+                        'url': params.get('request', {}).get('url', '') or params.get('response', {}).get('url', ''),
+                        'httpMethod': params.get('request', {}).get('method', ''),
+                        'status': params.get('response', {}).get('status', ''),
+                        'timestamp': message.get('message', {}).get('timestamp', 0)
+                    })
+            
+            if network_events:
+                print(f"🌐 Network Activity during {step_name}:")
+                for event in network_events[-10:]:  # Show last 10 events
+                    if event['url'] and not event['url'].startswith('data:'):
+                        print(f"  {event['method']}: {event['httpMethod']} {event['url']} - {event['status']}")
+                        
+                # Save detailed network log
+                if self.screenshot_session_dir:
+                    log_file = os.path.join(self.screenshot_session_dir, f"{step_name}_network.txt")
+                    with open(log_file, 'w') as f:
+                        for event in network_events:
+                            f.write(f"{event}\n")
+                        
+        except Exception as e:
+            logger.warning(f"Failed to log network requests: {e}")
     
     def _take_debug_screenshot(self, step_name: str, description: str = ""):
         """Take screenshot for debugging authentication steps"""
