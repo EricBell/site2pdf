@@ -217,7 +217,7 @@ class AuthenticationManager:
         # Handle multi-step authentication (e.g., email OTP)
         if result.requires_additional_steps and result.step_type == "email_otp":
             # Handle email OTP flow
-            verification_url = result.step_data.get('verification_url', result.response.url)
+            verification_url = result.step_data.get('verification_url') or (result.response.url if result.response else result.next_step_url)
             email = result.step_data.get('email', credentials.username)
             
             import click

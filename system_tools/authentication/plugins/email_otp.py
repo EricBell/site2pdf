@@ -790,7 +790,11 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     self.driver.execute_script("arguments[0].click();", otp_button)
                 
                 # Wait for response (either success message or URL change)
-                time.sleep(5)  # Give the page more time to react to JavaScript-heavy apps
+                print("🔍 EmailOTP: Waiting for page response", end="", flush=True)
+                for i in range(10):  # 5 seconds with progress dots
+                    time.sleep(0.5)
+                    print(".", end="", flush=True)
+                print()  # New line after dots
                 
                 # Check for success indicators
                 success_selectors = [
@@ -834,6 +838,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         requires_additional_steps=True,
                         step_type='email_otp',
                         next_step_url=self.driver.current_url,
+                        response=None,  # Explicitly set None for JS-based auth
                         step_data={
                             'email': username,
                             'verification_method': 'javascript'
@@ -848,6 +853,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             requires_additional_steps=True,
                             step_type='email_otp',
                             next_step_url=self.driver.current_url,
+                            response=None,  # Explicitly set None for JS-based auth
                             step_data={
                                 'email': username,
                                 'verification_method': 'javascript'
@@ -883,6 +889,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             requires_additional_steps=True,
                             step_type='email_otp',
                             next_step_url=self.driver.current_url,
+                            response=None,  # Explicitly set None for JS-based auth
                             step_data={
                                 'email': username,
                                 'verification_method': 'javascript'
