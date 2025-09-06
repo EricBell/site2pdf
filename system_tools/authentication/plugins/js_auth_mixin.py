@@ -8,6 +8,8 @@ that need to handle JavaScript-dependent forms.
 
 import time
 import logging
+import os
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from urllib.parse import urljoin, urlparse
 
@@ -43,6 +45,9 @@ class JavaScriptAuthMixin:
         super().__init__(*args, **kwargs)
         self.driver: Optional[webdriver.Remote] = None
         self.js_config = self._get_js_config()
+        self.screenshot_counter = 1
+        self.screenshot_session_dir = None
+        self.debug_screenshots_enabled = self.js_config.get('debug_screenshots', True)
     
     def _get_js_config(self) -> Dict[str, Any]:
         """Get JavaScript execution configuration"""
@@ -53,7 +58,8 @@ class JavaScriptAuthMixin:
             'implicit_wait': 10,
             'browser': 'auto',  # auto-detect available browser
             'window_size': (1920, 1080),
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'debug_screenshots': True
         }
         
         # Merge with plugin config
@@ -301,6 +307,31 @@ class JavaScriptAuthMixin:
         logger.info(f"🚀 Created Firefox WebDriver (headless={self.js_config['headless']})")
         return driver
     
+    def _setup_screenshot_session(self):
+        """Setup screenshot session directory"""
+        if not self.debug_screenshots_enabled or not self.driver:
+            return
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.screenshot_session_dir = f"debug_screenshots/auth_{timestamp}"
+        os.makedirs(self.screenshot_session_dir, exist_ok=True)
+        logger.info(f"📸 Debug screenshots enabled: {self.screenshot_session_dir}")
+    
+    def _take_debug_screenshot(self, step_name: str, description: str = ""):
+        """Take screenshot for debugging authentication steps"""
+        if not self.debug_screenshots_enabled or not self.driver or not self.screenshot_session_dir:
+            return
+        
+        try:
+            filename = f"step_{self.screenshot_counter:03d}_{step_name}.png"
+            filepath = os.path.join(self.screenshot_session_dir, filename)
+            
+            self.driver.save_screenshot(filepath)
+            print(f"📸 Screenshot: {filename} - {description}")
+            self.screenshot_counter += 1
+        except Exception as e:
+            logger.warning(f"Failed to take screenshot: {e}")
+    
     def _cleanup_driver(self):
         """Clean up WebDriver resources"""
         if self.driver:
@@ -419,6 +450,8 @@ class JavaScriptAuthMixin:
         """Context manager entry - create driver"""
         if self.js_config['enabled']:
             self.driver = self._create_driver()
+            if self.driver:
+                self._setup_screenshot_session()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):

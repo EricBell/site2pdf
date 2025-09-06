@@ -120,6 +120,7 @@ authentication:
   enabled: false                    # Enable authentication system
   cache_sessions: true              # Cache login sessions to avoid re-authentication  
   session_duration: "24h"           # How long cached sessions remain valid
+  debug_screenshots: true           # Enable debug screenshots during authentication
   sites:                            # Site-specific authentication configuration
     # Example site configuration
     # example.com:

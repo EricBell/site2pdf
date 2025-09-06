@@ -701,6 +701,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 # Navigate to login page
                 print(f"🔍 EmailOTP: Navigating to {form.action_url}")
                 self.driver.get(form.action_url)
+                self._take_debug_screenshot("navigate_to_login", f"Navigated to {form.action_url}")
                 
                 # Find email input field
                 email_selectors = [
@@ -720,8 +721,10 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     )
                 
                 print(f"🔍 EmailOTP: Found email input field")
+                self._take_debug_screenshot("found_email_field", "Located email input field")
                 
                 # Enter email address - try different interaction methods
+                self._take_debug_screenshot("before_email_input", "About to enter email address")
                 try:
                     # First try to scroll to element and make it visible
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", email_input)
@@ -732,12 +735,14 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     email_input.clear()
                     email_input.send_keys(username)
                     print(f"🔍 EmailOTP: Entered email: {username}")
+                    self._take_debug_screenshot("after_email_input_normal", f"Entered email normally: {username}")
                 except Exception as interact_error:
                     print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {str(interact_error).split('Stacktrace:')[0].strip()}")
                     # Fallback to JavaScript interaction
                     self.driver.execute_script(f"arguments[0].value = '{username}';", email_input)
                     self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", email_input)
                     print(f"🔍 EmailOTP: Entered email via JavaScript: {username}")
+                    self._take_debug_screenshot("after_email_input_js", f"Entered email via JavaScript: {username}")
                 
                 # Find and click OTP button
                 otp_button_selectors = [
@@ -765,6 +770,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         from selenium.webdriver.common.by import By
                         otp_button = self.driver.find_element(By.XPATH, xpath)
                         print(f"🔍 EmailOTP: Found OTP button using xpath: {xpath}")
+                        self._take_debug_screenshot("found_otp_button", f"Located OTP button: {xpath}")
                         break
                     except:
                         continue
@@ -778,24 +784,30 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 # Click the OTP button
                 current_url = self.driver.current_url
                 print(f"🔍 EmailOTP: Clicking OTP button...")
+                self._take_debug_screenshot("before_button_click", "About to click OTP button")
                 
                 try:
                     # Try normal click
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", otp_button)
                     time.sleep(0.5)
                     otp_button.click()
+                    self._take_debug_screenshot("after_button_click_normal", "Clicked OTP button normally")
                 except Exception as click_error:
                     print(f"🔍 EmailOTP: Normal button click failed, trying JavaScript: {str(click_error).split('Stacktrace:')[0].strip()}")
                     # Fallback to JavaScript click
                     self.driver.execute_script("arguments[0].click();", otp_button)
+                    self._take_debug_screenshot("after_button_click_js", "Clicked OTP button via JavaScript")
                 
                 # Wait for response (either success message or URL change)
                 print("🔍 EmailOTP: Waiting for page response", end="", flush=True)
                 for i in range(10):  # 5 seconds with progress dots
                     time.sleep(0.5)
                     print(".", end="", flush=True)
+                    if i == 5:  # Take a mid-wait screenshot
+                        self._take_debug_screenshot("wait_progress_midpoint", "Mid-wait progress check")
                 print()  # New line after dots
                 print("🔍 EmailOTP: Checking for success indicators...")
+                self._take_debug_screenshot("final_page_state", "Final page state after wait")
                 
                 # Check for success indicators
                 success_selectors = [
