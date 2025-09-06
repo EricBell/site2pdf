@@ -733,7 +733,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     email_input.send_keys(username)
                     print(f"🔍 EmailOTP: Entered email: {username}")
                 except Exception as interact_error:
-                    print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {interact_error}")
+                    print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {str(interact_error).split('Stacktrace:')[0].strip()}")
                     # Fallback to JavaScript interaction
                     self.driver.execute_script(f"arguments[0].value = '{username}';", email_input)
                     self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", email_input)
@@ -785,7 +785,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     time.sleep(0.5)
                     otp_button.click()
                 except Exception as click_error:
-                    print(f"🔍 EmailOTP: Normal button click failed, trying JavaScript: {click_error}")
+                    print(f"🔍 EmailOTP: Normal button click failed, trying JavaScript: {str(click_error).split('Stacktrace:')[0].strip()}")
                     # Fallback to JavaScript click
                     self.driver.execute_script("arguments[0].click();", otp_button)
                 
@@ -897,12 +897,10 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         )
                     
             except Exception as e:
-                import traceback
-                print(f"🔍 EmailOTP: ❌ JavaScript authentication error: {e}")
-                print(f"🔍 EmailOTP: Traceback: {traceback.format_exc()}")
+                print(f"🔍 EmailOTP: ❌ JavaScript authentication error: {str(e).split('Stacktrace:')[0].strip()}")
                 return AuthResult(
                     success=False,
-                    error_message=f"JavaScript authentication failed: {str(e)}"
+                    error_message=f"JavaScript authentication failed: {str(e).split('Stacktrace:')[0].strip()}"
                 )
     
     def _find_otp_button(self, form) -> Optional[Any]:
