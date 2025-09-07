@@ -79,11 +79,28 @@ class JavaScriptAuthMixin:
         import subprocess
         import os
         
-        # Prefer Firefox first as it's more stable in WSL environments
-        browsers_to_try = [
-            ('firefox', ['firefox', 'firefox-esr']),
-            ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
-        ]
+        # Check if we're in WSL environment
+        is_wsl = False
+        try:
+            with open('/proc/version', 'r') as f:
+                proc_version = f.read().lower()
+                is_wsl = 'microsoft' in proc_version or 'wsl' in proc_version
+        except:
+            pass
+        
+        if is_wsl:
+            # In WSL, prefer Chrome over Firefox due to faster startup times
+            print("🐧 WSL environment detected - prioritizing Chrome for faster startup")
+            browsers_to_try = [
+                ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
+                ('firefox', ['firefox', 'firefox-esr']),
+            ]
+        else:
+            # On regular Linux, Firefox is often more stable
+            browsers_to_try = [
+                ('firefox', ['firefox', 'firefox-esr']),
+                ('chrome', ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']),
+            ]
         
         for browser_type, commands in browsers_to_try:
             for cmd in commands:

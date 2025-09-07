@@ -414,7 +414,7 @@ class WebScraper:
         return scraped_data
 
     def _setup_authentication(self, base_url: str):
-        """Setup authentication if enabled"""
+        """Setup authentication if enabled with enhanced validation and error handling"""
         if not self.auth_enabled or not AUTHENTICATION_AVAILABLE:
             return
             
@@ -427,9 +427,11 @@ class WebScraper:
             auth_config = self.config.get('authentication', {})
             self.auth_manager = AuthenticationManager(base_url, cache_dir=cache_dir, config=auth_config)
             
-            # Authenticate
             if self.verbose:
-                print(f"🔍 Authenticating with: username='{self.auth_username}', auth_type='{self.auth_type}'")
+                print(f"🔍 Setting up authentication for: {urlparse(base_url).netloc}")
+                print(f"🔍 Auth details: username='{self.auth_username}', auth_type='{self.auth_type}'")
+            
+            # Attempt authentication with enhanced error handling
             auth_session = self.auth_manager.authenticate(
                 username=self.auth_username,
                 password=self.auth_password,
@@ -439,12 +441,28 @@ class WebScraper:
             # Replace scraper session with authenticated session
             self.session = self.auth_manager.get_authenticated_session()
             
+            # Test authentication by trying to access a protected resource
             if self.verbose:
-                print(f"🔐 Authentication successful for {self.auth_manager.domain}")
+                print(f"🔍 Testing authentication by accessing: {base_url}")
+            
+            test_response = self.session.get(base_url, timeout=10)
+            
+            # Basic check - if we get a different response, authentication might be working
+            # More sophisticated checks could be added here
+            if test_response.status_code == 200:
+                if self.verbose:
+                    print(f"🔐 Authentication test successful for {self.auth_manager.domain}")
+                    print(f"🔍 Ready to scrape authenticated content")
+            else:
+                self.logger.warning(f"Authentication test returned status {test_response.status_code}")
+                if self.verbose:
+                    print(f"⚠️  Authentication test returned status {test_response.status_code}")
                 
         except Exception as e:
+            # Enhanced error reporting for authentication failures
             auth_details = []
             auth_details.append(f"Target Site: {urlparse(base_url).netloc}")
+            auth_details.append(f"Target URL: {base_url}")
             if self.auth_type:
                 auth_details.append(f"Authentication Type: {self.auth_type}")
             if self.auth_username:
@@ -456,20 +474,54 @@ class WebScraper:
                 except:
                     pass
             
-            detailed_error = f"Authentication failed: {str(e)}\n" + \
-                           "Authentication Details:\n" + \
-                           "\n".join(f"  - {detail}" for detail in auth_details)
+            # Check if this is a specific authentication flow error
+            error_message = str(e)
+            if "Sign Up → Login navigation" in error_message or "signup button but no accessible login path" in error_message:
+                # This is a specific flow error, provide more detailed guidance
+                detailed_error = (
+                    f"❌ Authentication Setup Failed\n\n"
+                    f"The site appears to require authentication, but the login flow could not be completed.\n\n"
+                    f"🔍 Analysis Results:\n"
+                    f"{error_message}\n\n"
+                    f"📋 Site Details:\n" + 
+                    "\n".join(f"  • {detail}" for detail in auth_details) + "\n\n"
+                    f"💡 Troubleshooting Steps:\n"
+                    f"  1. Visit {base_url} manually in your browser\n"
+                    f"  2. Verify the login process: Sign Up → Already have account? → Login\n"
+                    f"  3. Check if the site has changed their authentication flow\n"
+                    f"  4. Try running without authentication first to see what content is publicly available\n\n"
+                    f"🚫 Stopping scraping to avoid wasting time on inaccessible content"
+                )
+            else:
+                # Generic authentication error
+                detailed_error = (
+                    f"❌ Authentication Failed\n\n"
+                    f"Error: {error_message}\n\n"
+                    f"📋 Authentication Details:\n" + 
+                    "\n".join(f"  • {detail}" for detail in auth_details) + "\n\n"
+                    f"💡 Suggestions:\n"
+                    f"  • Verify your credentials are correct\n"
+                    f"  • Check if the site's login flow has changed\n"
+                    f"  • Try authenticating manually first to test the flow\n"
+                    f"  • Check your internet connection and firewall settings"
+                )
             
             self.logger.error(detailed_error)
             if self.verbose:
-                print(f"❌ {detailed_error}")
+                print(detailed_error)
+            else:
+                # Even in non-verbose mode, show critical authentication errors
+                print(f"❌ Authentication failed: {error_message}")
+                print(f"💡 Use --verbose flag for detailed troubleshooting information")
             
             # If auth parameters were explicitly provided, this is a hard failure
             if self.auth_username or self.auth_password or self.auth_type:
-                raise Exception(detailed_error) from e
+                raise Exception(f"Authentication failed: {error_message}") from e
             
             # Otherwise, continue without authentication (for config-based auth only)
             self.auth_enabled = False
+            if self.verbose:
+                print(f"🔍 Continuing without authentication...")
 
     def scrape_website(self, base_url: str) -> List[Dict[str, Any]]:
         """Scrape the entire website starting from base_url with caching support."""

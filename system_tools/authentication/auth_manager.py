@@ -4,6 +4,7 @@ Authentication Manager - Central coordinator for authentication system
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
@@ -81,7 +82,7 @@ class AuthenticationManager:
     
     def authenticate(self, username: str = None, password: str = None, auth_type: str = None) -> AuthSession:
         """
-        Authenticate with the target site
+        Authenticate with the target site with enhanced pre-validation
         
         Args:
             username: Username (optional, will try to get from env/prompt)
@@ -98,7 +99,31 @@ class AuthenticationManager:
             # Check for cached session first
             if self.is_authenticated():
                 logger.info(f"Using cached authentication for {self.domain}")
+                print(f"🔐 Using cached authentication for {self.domain}")
                 return self._current_session
+            
+            print(f"🔍 Starting authentication for {self.domain} using {auth_type or 'auto-detected'} method")
+            
+            # Pre-validation: Check if authentication is likely to be required
+            auth_required = self._pre_validate_authentication_need(auth_type)
+            if not auth_required['required']:
+                if auth_required['reason'] == 'no_signup_no_login':
+                    # Site appears to be fully public
+                    print(f"🔍 Site appears to be public (no sign up or login indicators found)")
+                    print(f"⚠️  Warning: You requested authentication, but the site may not require it")
+                elif auth_required['reason'] == 'login_not_found':
+                    # Site has signup but no accessible login path
+                    error_msg = (
+                        f"Authentication setup failed: {auth_required['details']}\n"
+                        f"🔍 Site analysis:\n"
+                        f"  - Sign up button: {'✅ Found' if auth_required.get('has_signup') else '❌ Not found'}\n"
+                        f"  - Direct login: {'✅ Found' if auth_required.get('has_direct_login') else '❌ Not found'}\n"
+                        f"  - Sign up → Login path: {'✅ Found' if auth_required.get('signup_to_login_path') else '❌ Not found'}\n"
+                        f"💡 Suggestion: Verify the site requires authentication and check login flow manually"
+                    )
+                    raise AuthenticationError(error_msg)
+            else:
+                print(f"🔍 Authentication appears required: {auth_required['details']}")
             
             # Get credentials (for email OTP, password not required)
             require_password = auth_type != "email_otp"
@@ -123,11 +148,162 @@ class AuthenticationManager:
             self._authenticated_requests_session = None
             
             logger.info(f"Authentication successful for {self.domain}")
+            print(f"🔐 Authentication successful for {self.domain}")
             return auth_session
             
         except Exception as e:
             logger.error(f"Authentication failed for {self.domain}: {str(e)}")
             raise AuthenticationError(f"Authentication failed: {str(e)}") from e
+    
+    def _pre_validate_authentication_need(self, auth_type: str = None) -> Dict[str, Any]:
+        """
+        Pre-validate whether authentication is likely to be needed for this site
+        
+        Args:
+            auth_type: The authentication type being requested
+            
+        Returns:
+            Dictionary with validation results:
+            - required: bool - whether authentication appears necessary
+            - reason: str - reason for the determination
+            - details: str - human-readable explanation
+            - has_signup: bool - whether site has signup indicators
+            - has_direct_login: bool - whether site has direct login
+            - signup_to_login_path: bool - whether signup->login path exists
+        """
+        try:
+            print(f"🔍 Pre-validating authentication need for {self.site_url}")
+            
+            # Create a session to test the site
+            session = requests.Session()
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            })
+            
+            response = session.get(self.site_url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Check for authentication indicators
+            has_login_direct = self._has_direct_login_indicators(soup)
+            has_signup = self._has_signup_indicators(soup)
+            
+            # If we have direct login, authentication is clearly supported
+            if has_login_direct:
+                return {
+                    'required': True,
+                    'reason': 'direct_login_found',
+                    'details': 'Site has direct login indicators',
+                    'has_signup': has_signup,
+                    'has_direct_login': True,
+                    'signup_to_login_path': False
+                }
+            
+            # If we have signup, check if we can navigate to login
+            if has_signup:
+                print(f"🔍 Found signup indicators, checking for login navigation path...")
+                plugin = self._get_plugin(auth_type)
+                
+                # Use the plugin's enhanced login discovery
+                try:
+                    discovered_login_url = plugin.get_login_url(self.site_url)
+                    
+                    # If we got back the original URL, login discovery failed
+                    if discovered_login_url == self.site_url:
+                        return {
+                            'required': True,
+                            'reason': 'login_not_found',
+                            'details': 'Site has signup button but no accessible login path found',
+                            'has_signup': True,
+                            'has_direct_login': False,
+                            'signup_to_login_path': False
+                        }
+                    else:
+                        return {
+                            'required': True,
+                            'reason': 'signup_to_login_found',
+                            'details': f'Found login path via signup navigation: {discovered_login_url}',
+                            'has_signup': True,
+                            'has_direct_login': False,
+                            'signup_to_login_path': True
+                        }
+                except Exception as nav_error:
+                    print(f"🔍 Login navigation test failed: {nav_error}")
+                    return {
+                        'required': True,
+                        'reason': 'login_not_found', 
+                        'details': f'Site has signup button but login navigation failed: {str(nav_error)}',
+                        'has_signup': True,
+                        'has_direct_login': False,
+                        'signup_to_login_path': False
+                    }
+            
+            # No clear authentication indicators
+            return {
+                'required': False,
+                'reason': 'no_signup_no_login',
+                'details': 'No authentication indicators found on the page',
+                'has_signup': False,
+                'has_direct_login': False,
+                'signup_to_login_path': False
+            }
+            
+        except Exception as e:
+            print(f"🔍 Pre-validation failed: {e}")
+            # If pre-validation fails, assume authentication might be needed
+            return {
+                'required': True,
+                'reason': 'validation_failed',
+                'details': f'Could not validate authentication need: {str(e)}',
+                'has_signup': None,
+                'has_direct_login': None,
+                'signup_to_login_path': None
+            }
+    
+    def _has_direct_login_indicators(self, soup: BeautifulSoup) -> bool:
+        """Check if page has direct login indicators"""
+        login_patterns = [
+            r'login',
+            r'sign.?in',
+            r'log.?in',
+            r'signin'
+        ]
+        
+        for pattern in login_patterns:
+            # Check href attributes
+            if soup.find('a', href=re.compile(pattern, re.I)):
+                return True
+            # Check button/link text content
+            if soup.find('a', string=re.compile(pattern, re.I)):
+                return True
+            # Check button elements
+            if soup.find('button', string=re.compile(pattern, re.I)):
+                return True
+        
+        return False
+    
+    def _has_signup_indicators(self, soup: BeautifulSoup) -> bool:
+        """Check if page has signup indicators"""
+        signup_patterns = [
+            r'sign.?up',
+            r'register',
+            r'join',
+            r'create.?account'
+        ]
+        
+        for pattern in signup_patterns:
+            # Check href attributes
+            if soup.find('a', href=re.compile(pattern, re.I)):
+                return True
+            # Check button/link text content
+            if soup.find('a', string=re.compile(pattern, re.I)):
+                return True
+            # Check button elements
+            if soup.find('button', string=re.compile(pattern, re.I)):
+                return True
+        
+        return False
     
     def _perform_authentication(self, credentials: Credentials, auth_type: str = None) -> AuthSession:
         """

@@ -31,12 +31,15 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
     
     def get_login_url(self, base_url: str) -> str:
         """
-        Get the login URL for the site, with auto-discovery
+        Get the login URL for the site, with enhanced multi-step navigation discovery
         
-        First checks config, then tries to discover login links on the base page
+        First checks config, then tries to discover login links on the base page.
+        If no direct login is found but there's a "Sign Up" button, follows the
+        Sign Up → Login navigation path (common pattern for sites like ideabrowser.com)
         """
         # Check if login URL is explicitly configured
         if 'login_url' in self.config:
+            print(f"🔍 EmailOTP: Using configured login URL: {self.config['login_url']}")
             return self.config['login_url']
         
         # Try to auto-discover login URL from the base page
@@ -49,12 +52,13 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             })
             
+            print(f"🔍 EmailOTP: Starting login URL discovery from: {base_url}")
             response = session.get(base_url, timeout=10)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Look for login links
+            # Phase 1: Look for direct login links
             login_patterns = [
                 r'login',
                 r'sign.?in',
@@ -62,22 +66,28 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 r'signin'
             ]
             
+            print(f"🔍 EmailOTP: Phase 1 - Looking for direct login links...")
             for pattern in login_patterns:
                 # Check href attributes
                 link = soup.find('a', href=re.compile(pattern, re.I))
                 if link:
                     href = link.get('href')
                     if href:
-                        return urljoin(base_url, href)
+                        login_url = urljoin(base_url, href)
+                        print(f"🔍 EmailOTP: Found direct login link via href: {login_url}")
+                        return login_url
                 
                 # Check button/link text content
                 link = soup.find('a', string=re.compile(pattern, re.I))
                 if link:
                     href = link.get('href')
                     if href:
-                        return urljoin(base_url, href)
+                        login_url = urljoin(base_url, href)
+                        print(f"🔍 EmailOTP: Found direct login link via text: {login_url}")
+                        return login_url
             
-            # Fallback: try common login paths
+            # Phase 2: Try common login paths
+            print(f"🔍 EmailOTP: Phase 2 - Trying common login paths...")
             common_paths = ['/login', '/signin', '/sign-in', '/auth/login']
             for path in common_paths:
                 try:
@@ -92,16 +102,159 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             if (form.find('input', {'type': 'email'}) or 
                                 form.find('input', {'name': re.compile(r'email|username', re.I)}) or
                                 form.find('input', {'type': 'text'})):
+                                print(f"🔍 EmailOTP: Found login form at common path: {test_url}")
                                 return test_url
                 except:
                     continue
             
+            # Phase 3: Multi-step navigation (Sign Up → Login)
+            print(f"🔍 EmailOTP: Phase 3 - Looking for Sign Up → Login navigation...")
+            signup_login_url = self._navigate_signup_to_login(session, base_url, soup)
+            if signup_login_url:
+                print(f"🔍 EmailOTP: Found login via Sign Up navigation: {signup_login_url}")
+                return signup_login_url
+            
+            print(f"🔍 EmailOTP: No login URL discovered, falling back to base URL")
+            
         except Exception as e:
+            print(f"🔍 EmailOTP: Auto-discovery failed: {e}")
             # If auto-discovery fails, fall back to base URL
             pass
         
         # Fallback to base URL
         return base_url
+    
+    def _navigate_signup_to_login(self, session: requests.Session, base_url: str, base_soup: BeautifulSoup) -> Optional[str]:
+        """
+        Navigate from Sign Up button to Login page (for sites like ideabrowser.com)
+        
+        Args:
+            session: requests session to use
+            base_url: the starting URL
+            base_soup: parsed HTML of the base page
+            
+        Returns:
+            Login URL if found via Sign Up navigation, None otherwise
+        """
+        try:
+            from urllib.parse import urljoin
+            
+            # Look for "Sign Up" button on the base page
+            signup_patterns = [
+                r'sign.?up',
+                r'register',
+                r'join',
+                r'create.?account'
+            ]
+            
+            signup_url = None
+            for pattern in signup_patterns:
+                # Check href attributes
+                link = base_soup.find('a', href=re.compile(pattern, re.I))
+                if link:
+                    href = link.get('href')
+                    if href:
+                        signup_url = urljoin(base_url, href)
+                        print(f"🔍 EmailOTP: Found Sign Up link via href: {signup_url}")
+                        break
+                
+                # Check button/link text content
+                link = base_soup.find('a', string=re.compile(pattern, re.I))
+                if link:
+                    href = link.get('href')
+                    if href:
+                        signup_url = urljoin(base_url, href)
+                        print(f"🔍 EmailOTP: Found Sign Up link via text: {signup_url}")
+                        break
+                
+                # Check button elements
+                button = base_soup.find('button', string=re.compile(pattern, re.I))
+                if button:
+                    # Look for parent form or onclick handlers
+                    form = button.find_parent('form')
+                    if form:
+                        action = form.get('action', '')
+                        if action:
+                            signup_url = urljoin(base_url, action)
+                            print(f"🔍 EmailOTP: Found Sign Up via form action: {signup_url}")
+                            break
+            
+            if not signup_url:
+                print(f"🔍 EmailOTP: No Sign Up button found on base page")
+                return None
+            
+            # Navigate to the Sign Up page
+            print(f"🔍 EmailOTP: Navigating to Sign Up page: {signup_url}")
+            signup_response = session.get(signup_url, timeout=10)
+            signup_response.raise_for_status()
+            
+            signup_soup = BeautifulSoup(signup_response.text, 'html.parser')
+            
+            # Look for "Already have an account?" or "Login" link on sign up page
+            login_from_signup_patterns = [
+                r'already.{0,20}account',
+                r'have.{0,20}account',
+                r'existing.{0,20}account',
+                r'login',
+                r'sign.?in'
+            ]
+            
+            for pattern in login_from_signup_patterns:
+                # Look for the "Already have account?" text and nearby login link
+                already_text = signup_soup.find(string=re.compile(pattern, re.I))
+                if already_text:
+                    print(f"🔍 EmailOTP: Found 'already have account' text: {already_text.strip()}")
+                    
+                    # Find the parent element and look for login links nearby
+                    parent = already_text.parent if already_text.parent else signup_soup
+                    
+                    # Look for login links in the same container
+                    login_link = None
+                    for container in [parent, parent.parent, parent.find_next_sibling(), parent.find_previous_sibling()]:
+                        if not container:
+                            continue
+                        
+                        # Check for login links
+                        login_link = container.find('a', string=re.compile(r'login|sign.?in', re.I))
+                        if not login_link:
+                            login_link = container.find('a', href=re.compile(r'login|sign.?in', re.I))
+                        
+                        if login_link:
+                            break
+                    
+                    if login_link:
+                        href = login_link.get('href')
+                        if href:
+                            login_url = urljoin(signup_url, href)  # Resolve relative to signup page
+                            print(f"🔍 EmailOTP: Found login link on signup page: {login_url}")
+                            
+                            # Verify this is actually a login page by checking for forms
+                            try:
+                                login_response = session.get(login_url, timeout=10)
+                                login_response.raise_for_status()
+                                login_soup = BeautifulSoup(login_response.text, 'html.parser')
+                                
+                                # Check if this page has login forms
+                                forms = login_soup.find_all('form')
+                                for form in forms:
+                                    # Look for email or username fields
+                                    if (form.find('input', {'type': 'email'}) or 
+                                        form.find('input', {'name': re.compile(r'email|username', re.I)}) or
+                                        form.find('input', {'type': 'text'})):
+                                        print(f"🔍 EmailOTP: Verified login form exists at: {login_url}")
+                                        return login_url
+                                
+                                print(f"🔍 EmailOTP: No login form found at discovered URL: {login_url}")
+                            except Exception as verify_error:
+                                print(f"🔍 EmailOTP: Failed to verify login URL {login_url}: {verify_error}")
+                                continue
+            
+            print(f"🔍 EmailOTP: No login link found on Sign Up page")
+            return None
+            
+        except Exception as e:
+            print(f"🔍 EmailOTP: Sign Up → Login navigation failed: {e}")
+            return None
     
     def detect_login_form(self, soup: BeautifulSoup, url: str) -> Optional[LoginForm]:
         """
