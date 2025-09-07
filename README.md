@@ -847,11 +847,11 @@ The application generates:
   - Preview cache: URL approval decisions for session persistence
 - **Log Files**: Detailed crawling and processing logs in `logs/`
 - **Temporary Files**: Downloaded images stored in `temp/` during processing
-- **Todo Database**: YAML-based todo storage in `todos.yaml` (when using todo features)
+- **Todo Files**: Markdown-based todo storage in `todos/` folder (when using todo features)
 
 ## 📝 Todo Management System
 
-The integrated todo management system helps you track development tasks, bugs, and project progress using a structured YAML format.
+The integrated todo management system helps you track development tasks, bugs, and project progress using individual markdown files organized in a folder structure.
 
 ### Todo Features
 
