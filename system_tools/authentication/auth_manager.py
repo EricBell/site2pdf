@@ -390,6 +390,11 @@ class AuthenticationManager:
             session, login_form, credentials.username, credentials.password
         )
         
+        # Debug: Log the result we received
+        print(f"🔍 AuthManager: Received result from plugin: success={result.success}")
+        if hasattr(result, 'error_message') and result.error_message:
+            print(f"🔍 AuthManager: Error message: {result.error_message}")
+        
         # Handle multi-step authentication (e.g., email OTP)
         if result.requires_additional_steps and result.step_type == "email_otp":
             # Handle email OTP flow

@@ -63,10 +63,13 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 print(f"🔍 EmailOTP: ❌ Method '{method}' threw exception: {str(e)}")
         
         # All methods failed
-        return AuthResult(
+        print(f"🔍 EmailOTP: 🚨 ALL METHODS FAILED - Returning failure result")
+        failure_result = AuthResult(
             success=False,
             error_message=f"All authentication methods failed: {self.method_priority}"
         )
+        print(f"🔍 EmailOTP: Final result: success={failure_result.success}, error={failure_result.error_message}")
+        return failure_result
     
     def get_login_url(self, base_url: str) -> str:
         """
@@ -1812,12 +1815,51 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             print(f"   5. Return here and paste the URL when prompted")
             
             try:
-                # Try to open browser automatically
-                webbrowser.open(login_url)
-                print(f"✅ Opened browser automatically")
+                # Try Firefox first (preferred browser)
+                import subprocess
+                import os
+                
+                # Check if we're in WSL and try to use Windows Firefox if available
+                if os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower():
+                    print("🐧 WSL detected - trying to open Firefox via Windows")
+                    try:
+                        # Try Windows Firefox paths
+                        firefox_paths = [
+                            "/mnt/c/Program Files/Mozilla Firefox/firefox.exe",
+                            "/mnt/c/Program Files (x86)/Mozilla Firefox/firefox.exe"
+                        ]
+                        firefox_found = False
+                        for path in firefox_paths:
+                            if os.path.exists(path):
+                                subprocess.Popen([path, login_url])
+                                firefox_found = True
+                                print(f"✅ Opened Firefox via Windows: {path}")
+                                break
+                        
+                        if not firefox_found:
+                            # Fallback to cmd.exe start
+                            subprocess.Popen(["cmd.exe", "/c", "start", login_url])
+                            print(f"✅ Opened browser via Windows cmd")
+                            
+                    except Exception as wsl_error:
+                        print(f"⚠️ WSL browser opening failed: {wsl_error}")
+                        # Try Linux Firefox
+                        subprocess.Popen(["firefox", login_url])
+                        print(f"✅ Opened Firefox on Linux")
+                else:
+                    # Try Firefox directly on Linux
+                    try:
+                        subprocess.Popen(["firefox", login_url])
+                        print(f"✅ Opened Firefox on Linux")
+                    except FileNotFoundError:
+                        # Fallback to system default browser
+                        webbrowser.open(login_url)
+                        print(f"✅ Opened default browser (Firefox not found)")
+                        
             except Exception as browser_error:
-                print(f"⚠️  Could not open browser automatically: {browser_error}")
+                print(f"⚠️ Could not open browser automatically: {browser_error}")
                 print(f"   Please manually navigate to: {login_url}")
+                print(f"   Recommended: Use Firefox for best compatibility")
             
             # Wait for user to complete authentication
             print(f"\n⏳ Waiting for you to complete authentication...")
@@ -1826,7 +1868,30 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             max_attempts = 3
             for attempt in range(max_attempts):
                 try:
-                    authenticated_url = input(f"\nPlease enter the final URL after successful authentication (attempt {attempt + 1}/{max_attempts}): ").strip()
+                    import sys
+                    import select
+                    
+                    # Check if we're in an interactive terminal
+                    if not sys.stdin.isatty():
+                        print("❌ Non-interactive terminal detected - manual authentication not possible")
+                        print("💡 Try running this command from an interactive terminal (not via automation)")
+                        break
+                    
+                    print(f"\nPlease enter the final URL after successful authentication (attempt {attempt + 1}/{max_attempts}): ", end="", flush=True)
+                    
+                    # Add timeout for input  
+                    if sys.platform != 'win32':
+                        # Unix-like systems - use select for timeout
+                        import select
+                        i, o, e = select.select([sys.stdin], [], [], 120)  # 2 minute timeout
+                        if i:
+                            authenticated_url = sys.stdin.readline().strip()
+                        else:
+                            print("❌ Timeout waiting for input (2 minutes)")
+                            continue
+                    else:
+                        # Windows fallback (no select support)
+                        authenticated_url = input().strip()
                     
                     if not authenticated_url:
                         print("❌ Empty URL provided")
@@ -1881,6 +1946,10 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         if attempt < max_attempts - 1:
                             continue
                 
+                except EOFError:
+                    print(f"❌ Input stream closed - likely running in non-interactive environment")
+                    print(f"💡 Run from an interactive terminal for manual authentication")
+                    break
                 except KeyboardInterrupt:
                     print(f"\n⛔ Manual authentication cancelled by user")
                     return AuthResult(
