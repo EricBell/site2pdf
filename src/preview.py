@@ -170,8 +170,57 @@ class URLPreview:
         
         return items
     
+    def _parse_selection(self, selection_str: str, max_items: int) -> List[int]:
+        """Parse selection string supporting ranges and multiple values.
+        
+        Examples:
+        - "1,3,5" -> [1, 3, 5]
+        - "5-10" -> [5, 6, 7, 8, 9, 10] 
+        - "1,3,5-8,12" -> [1, 3, 5, 6, 7, 8, 12]
+        - "1 3 5" -> [1, 3, 5]
+        """
+        numbers = []
+        
+        # Support both comma and space separation
+        parts = re.split('[,\s]+', selection_str.strip())
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+                
+            if '-' in part:
+                # Handle range (e.g., "5-10")
+                try:
+                    start, end = part.split('-', 1)
+                    start_num = int(start.strip())
+                    end_num = int(end.strip())
+                    
+                    if start_num > end_num:
+                        start_num, end_num = end_num, start_num  # Swap if reversed
+                    
+                    # Validate range
+                    if start_num < 1 or end_num > max_items:
+                        raise ValueError(f"Range {start_num}-{end_num} is out of bounds (1-{max_items})")
+                    
+                    numbers.extend(range(start_num, end_num + 1))
+                except ValueError as e:
+                    raise ValueError(f"Invalid range '{part}': {e}")
+            else:
+                # Handle single number
+                try:
+                    num = int(part)
+                    if num < 1 or num > max_items:
+                        raise ValueError(f"Number {num} is out of bounds (1-{max_items})")
+                    numbers.append(num)
+                except ValueError:
+                    raise ValueError(f"Invalid number '{part}'")
+        
+        # Remove duplicates and sort
+        return sorted(list(set(numbers)))
+
     def interactive_exclude(self, tree: Dict) -> Set[str]:
-        """Interactive exclusion of URL paths."""
+        """Interactive exclusion of URL paths with bulk selection support."""
         click.echo("\n🔍 URL Structure Preview:")
         click.echo("=" * 50)
         
@@ -188,12 +237,16 @@ class URLPreview:
         
         while True:
             click.echo(f"\nOptions:")
-            click.echo("  e <number>  - Exclude path and all subpaths")
-            click.echo("  i <number>  - Include previously excluded path")
-            click.echo("  r           - Refresh display")
-            click.echo("  s           - Show excluded URLs")
-            click.echo("  c           - Continue to approval")
-            click.echo("  q           - Quit without scraping")
+            click.echo("  e <selection>  - Exclude path(s) and all subpaths")
+            click.echo("                   Examples: e 5  e 1,3,5  e 5-10  e 1,3,5-8,12")
+            click.echo("  i <selection>  - Include previously excluded path(s)")
+            click.echo("                   Examples: i 2  i 1,5,7  i 3-6")
+            click.echo("  ea             - Exclude all paths")
+            click.echo("  ia             - Include all paths")
+            click.echo("  r              - Refresh display")
+            click.echo("  s              - Show excluded URLs")
+            click.echo("  c              - Continue to approval")
+            click.echo("  q              - Quit without scraping")
             
             try:
                 choice = click.prompt("Enter your choice", type=str).strip().lower()
@@ -211,36 +264,103 @@ class URLPreview:
                     self._show_excluded_urls()
                 elif choice.startswith('e '):
                     try:
-                        num = int(choice.split()[1])
-                        if 1 <= num <= len(items):
+                        selection_str = choice[2:].strip()  # Everything after "e "
+                        numbers = self._parse_selection(selection_str, len(items))
+                        
+                        if not numbers:
+                            click.echo("❌ No valid numbers provided")
+                            continue
+                        
+                        excluded_paths = []
+                        for num in numbers:
                             path = items[num-1][1]
                             self._exclude_path(tree, path)
-                            click.echo(f"✅ Excluded path: {path}")
-                            # Refresh display
-                            click.echo("\n🔍 Updated URL Structure:")
-                            click.echo("=" * 50)
-                            items = self.display_tree(tree)
+                            excluded_paths.append(path)
+                        
+                        if len(excluded_paths) == 1:
+                            click.echo(f"✅ Excluded path: {excluded_paths[0]}")
                         else:
-                            click.echo(f"❌ Invalid number. Please enter 1-{len(items)} (you entered {num})")
-                    except (ValueError, IndexError):
-                        click.echo("❌ Invalid format. Use: e <number>")
+                            click.echo(f"✅ Excluded {len(excluded_paths)} paths:")
+                            for path in excluded_paths:
+                                click.echo(f"   - {path}")
+                        
+                        # Refresh display
+                        click.echo("\n🔍 Updated URL Structure:")
+                        click.echo("=" * 50)
+                        items = self.display_tree(tree)
+                        
+                    except ValueError as e:
+                        click.echo(f"❌ {e}")
+                        click.echo("💡 Examples: e 5  e 1,3,5  e 5-10  e 1,3,5-8,12")
                 elif choice.startswith('i '):
                     try:
-                        num = int(choice.split()[1])
-                        if 1 <= num <= len(items):
+                        selection_str = choice[2:].strip()  # Everything after "i "
+                        numbers = self._parse_selection(selection_str, len(items))
+                        
+                        if not numbers:
+                            click.echo("❌ No valid numbers provided")
+                            continue
+                        
+                        included_paths = []
+                        for num in numbers:
                             path = items[num-1][1]
                             self._include_path(tree, path)
-                            click.echo(f"✅ Included path: {path}")
-                            # Refresh display
-                            click.echo("\n🔍 Updated URL Structure:")
-                            click.echo("=" * 50)
-                            items = self.display_tree(tree)
+                            included_paths.append(path)
+                        
+                        if len(included_paths) == 1:
+                            click.echo(f"✅ Included path: {included_paths[0]}")
                         else:
-                            click.echo(f"❌ Invalid number. Please enter 1-{len(items)}")
-                    except (ValueError, IndexError):
-                        click.echo("❌ Invalid format. Use: i <number>")
+                            click.echo(f"✅ Included {len(included_paths)} paths:")
+                            for path in included_paths:
+                                click.echo(f"   - {path}")
+                        
+                        # Refresh display
+                        click.echo("\n🔍 Updated URL Structure:")
+                        click.echo("=" * 50)
+                        items = self.display_tree(tree)
+                        
+                    except ValueError as e:
+                        click.echo(f"❌ {e}")
+                        click.echo("💡 Examples: i 2  i 1,5,7  i 3-6")
+                elif choice == 'ea':
+                    # Exclude all paths
+                    if not items:
+                        click.echo("❌ No paths to exclude")
+                        continue
+                    
+                    excluded_paths = []
+                    for i in range(len(items)):
+                        path = items[i][1]
+                        self._exclude_path(tree, path)
+                        excluded_paths.append(path)
+                    
+                    click.echo(f"✅ Excluded all {len(excluded_paths)} paths")
+                    
+                    # Refresh display
+                    click.echo("\n🔍 Updated URL Structure:")
+                    click.echo("=" * 50)
+                    items = self.display_tree(tree)
+                elif choice == 'ia':
+                    # Include all paths
+                    if not items:
+                        click.echo("❌ No paths to include")
+                        continue
+                    
+                    included_paths = []
+                    for i in range(len(items)):
+                        path = items[i][1]
+                        self._include_path(tree, path)
+                        included_paths.append(path)
+                    
+                    click.echo(f"✅ Included all {len(included_paths)} paths")
+                    
+                    # Refresh display
+                    click.echo("\n🔍 Updated URL Structure:")
+                    click.echo("=" * 50)
+                    items = self.display_tree(tree)
                 else:
                     click.echo("❌ Invalid choice. Please try again.")
+                    click.echo("💡 Use 'e 1,3,5' for multiple, 'e 5-10' for ranges, 'ea' for all")
                     
             except KeyboardInterrupt:
                 click.echo("\nExiting...")
