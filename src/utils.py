@@ -197,16 +197,17 @@ def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
         log_filename = os.path.join(logs_dir, logging_config.get('log_filename', 'scraper.log'))
         
         if logging_config.get('rotate_logs', True):
-            # Rotating file handler
+            # Rotating file handler - truncate on startup for fresh logs each run
             file_handler = logging.handlers.RotatingFileHandler(
                 log_filename,
+                mode='w',  # Overwrite mode - fresh log for each run
                 maxBytes=10*1024*1024,  # 10MB
                 backupCount=5,
                 encoding='utf-8'
             )
         else:
-            # Regular file handler
-            file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+            # Regular file handler - truncate on startup for fresh logs each run
+            file_handler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
             
         file_handler.setLevel(logging.DEBUG)  # File gets all logs
         file_handler.setFormatter(formatter)

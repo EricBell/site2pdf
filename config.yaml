@@ -117,11 +117,23 @@ pdf:
   output_filename: scraped_website.pdf
   page_size: A4
 authentication:
-  enabled: false                    # Enable authentication system
+  enabled: true                     # Enable authentication system
   cache_sessions: true              # Cache login sessions to avoid re-authentication  
   session_duration: "24h"           # How long cached sessions remain valid
   debug_screenshots: true           # Enable debug screenshots during authentication
+  method_priority:                  # Authentication method priority order
+    - "direct_api"                  # Try direct API calls first (better for automation)
+    - "javascript"                  # Then try browser automation 
+    - "manual"                      # Finally fall back to manual intervention
   sites:                            # Site-specific authentication configuration
+    # ideabrowser.com - use direct API method first since browser automation has issues
+    ideabrowser.com:
+      plugin: "email_otp"           # Use email OTP plugin
+      method_priority:              # Override global method priority for this site
+        - "direct_api"              # Try direct API first for this site
+        - "javascript"              # Then browser automation
+        - "manual"                  # Finally manual intervention
+    
     # Example site configuration
     # example.com:
     #   plugin: "generic_form"       # Plugin to use (generic_form, github, etc.)

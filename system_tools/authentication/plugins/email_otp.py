@@ -28,6 +28,45 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         config = config or {}
         self.timeout_seconds = config.get('otp_timeout', 300)  # 5 minutes default
         self.max_retries = config.get('max_retries', 3)
+        
+        # Get authentication method priority from config
+        self.method_priority = config.get('method_priority', ['javascript', 'direct_api', 'manual'])
+    
+    def _execute_authentication_methods(self, session: requests.Session, form, username: str, password: str) -> AuthResult:
+        """Execute authentication methods in priority order based on configuration"""
+        print(f"🔍 EmailOTP: Authentication method priority: {self.method_priority}")
+        
+        for method in self.method_priority:
+            print(f"🔍 EmailOTP: Attempting method: {method}")
+            
+            try:
+                if method == 'javascript':
+                    # Try JavaScript browser automation
+                    result = self._attempt_javascript_authentication(session, form, username, password)
+                elif method == 'direct_api':
+                    # Try direct API calls
+                    result = self._attempt_direct_api_authentication(username, form)
+                elif method == 'manual':
+                    # Manual intervention
+                    result = self._attempt_manual_authentication(username, form)
+                else:
+                    print(f"🔍 EmailOTP: ⚠️ Unknown authentication method: {method}")
+                    continue
+                
+                if result.success:
+                    print(f"🔍 EmailOTP: ✅ Method '{method}' succeeded!")
+                    return result
+                else:
+                    print(f"🔍 EmailOTP: ❌ Method '{method}' failed: {result.error_message}")
+                    
+            except Exception as e:
+                print(f"🔍 EmailOTP: ❌ Method '{method}' threw exception: {str(e)}")
+        
+        # All methods failed
+        return AuthResult(
+            success=False,
+            error_message=f"All authentication methods failed: {self.method_priority}"
+        )
     
     def get_login_url(self, base_url: str) -> str:
         """
@@ -829,10 +868,10 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
     
     def perform_login_js(self, session, form, username: str, password: str) -> AuthResult:
         """
-        Perform email OTP login using JavaScript/browser automation
+        Perform email OTP login using configured method priority
         
         Args:
-            session: requests.Session (not used for JS auth)
+            session: requests.Session 
             form: LoginForm object from detect_login_form
             username: Email address
             password: Password (not used for email OTP)
@@ -840,13 +879,22 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         Returns:
             AuthResult indicating success/failure
         """
-        print("🚀 EmailOTP: Starting JavaScript-based authentication")
+        print("🚀 EmailOTP: Starting prioritized authentication flow")
+        return self._execute_authentication_methods(session, form, username, password)
+    
+    def _attempt_javascript_authentication(self, session, form, username: str, password: str) -> AuthResult:
+        """
+        Attempt email OTP login using JavaScript/browser automation
+        """
+        print("🔍 EmailOTP: Starting JavaScript-based authentication")
         
         # Create WebDriver context
         with self as js_context:
             if not self.driver:
-                print(f"🔍 EmailOTP: Browser automation failed, switching to manual intervention mode")
-                return self._attempt_manual_authentication(username, form)
+                return AuthResult(
+                    success=False,
+                    error_message="Browser automation not available - WebDriver failed to initialize"
+                )
             
             try:
                 # Navigate to login page
