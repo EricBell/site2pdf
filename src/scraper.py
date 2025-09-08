@@ -373,8 +373,12 @@ class WebScraper:
         session_info = f" [Session: {self.cache_session_id[:8]}...]" if self.cache_session_id else ""
         pbar = tqdm(total=total_urls, desc=f"Scraping approved URLs{session_info}", unit="pages")
         
+        # Track content for duplicate detection
+        scraped_content_hashes = []
+        duplicate_detection_threshold = 2  # Number of pages to compare for duplicates
+        
         try:
-            for url in approved_urls:
+            for page_index, url in enumerate(approved_urls):
                 pbar.set_description(f"Scraping: {url[:50]}...")
                 
                 html = self._fetch_page(url)
@@ -391,6 +395,30 @@ class WebScraper:
                             self.cache_manager.save_page(self.cache_session_id, content_data)
                         
                         self.logger.info(f"Scraped: {url}")
+                        
+                        # Early duplicate detection (after 2+ pages)
+                        if page_index >= duplicate_detection_threshold - 1:
+                            current_content = content_data.get('text', '').strip()
+                            current_hash = hash(current_content)
+                            
+                            # Check if this content is identical to any previous page
+                            if current_hash in scraped_content_hashes:
+                                self.logger.error(f"🚨 DUPLICATE CONTENT DETECTED - Authentication likely failed")
+                                self.logger.error(f"Page {page_index + 1} has identical content to a previous page")
+                                self.logger.error(f"This usually indicates authentication failure or access denied")
+                                
+                                # Show sample of the duplicate content
+                                sample = current_content[:200] + "..." if len(current_content) > 200 else current_content
+                                self.logger.error(f"Content sample: {repr(sample)}")
+                                
+                                raise RuntimeError(
+                                    f"Scraping terminated: Pages {page_index + 1} and earlier contain identical content. "
+                                    f"This typically indicates authentication failure - all pages showing same error/login content. "
+                                    f"Content sample: {sample[:100]}..."
+                                )
+                            
+                            scraped_content_hashes.append(current_hash)
+                        
                     else:
                         self.logger.debug(f"Skipped (insufficient content): {url}")
                 
