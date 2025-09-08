@@ -879,6 +879,30 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                 
                 # Enter email address - try different interaction methods
                 self._take_debug_screenshot("before_email_input", "About to enter email address")
+                
+                # First, analyze the email input field properties
+                try:
+                    field_info = self.driver.execute_script("""
+                        var input = arguments[0];
+                        return {
+                            tagName: input.tagName,
+                            type: input.type,
+                            name: input.name || 'no name',
+                            id: input.id || 'no id', 
+                            placeholder: input.placeholder || 'no placeholder',
+                            value: input.value || 'empty',
+                            disabled: input.disabled,
+                            readonly: input.readOnly,
+                            required: input.required,
+                            className: input.className || 'no class',
+                            autocomplete: input.autocomplete || 'no autocomplete',
+                            maxLength: input.maxLength || 'no limit'
+                        };
+                    """, email_input)
+                    print(f"🔍 EmailOTP: Email field analysis: {field_info}")
+                except Exception as e:
+                    print(f"🔍 EmailOTP: Could not analyze email field: {e}")
+                
                 try:
                     # First try to scroll to element and make it visible
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", email_input)
@@ -889,6 +913,11 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     email_input.clear()
                     email_input.send_keys(username)
                     print(f"🔍 EmailOTP: Entered email: {username}")
+                    
+                    # Immediately verify it was entered
+                    immediate_value = self.driver.execute_script("return arguments[0].value;", email_input)
+                    print(f"🔍 EmailOTP: Immediate verification - field value: '{immediate_value}'")
+                    
                     self._take_debug_screenshot("after_email_input_normal", f"Entered email normally: {username}")
                 except Exception as interact_error:
                     print(f"🔍 EmailOTP: Normal interaction failed, trying JavaScript: {str(interact_error).split('Stacktrace:')[0].strip()}")
@@ -977,8 +1006,21 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     
                     if not success:
                         print(f"🔍 EmailOTP: ❌ All JavaScript approaches failed to set email value")
+                        return AuthResult(
+                            success=False,
+                            error_message=f"Failed to enter email address '{username}' into the form field. The website may have unusual input validation or JavaScript protection."
+                        )
                     
                     self._take_debug_screenshot("after_email_input_js", f"Email input attempts completed - success: {success}")
+                
+                # Final verification that email was properly set
+                final_email_value = self.driver.execute_script("return arguments[0].value;", email_input)
+                if final_email_value != username:
+                    print(f"🔍 EmailOTP: ❌ Final email verification failed - expected '{username}', got '{final_email_value}'")
+                    return AuthResult(
+                        success=False,
+                        error_message=f"Email address was not properly entered. Expected '{username}' but field contains '{final_email_value}'. This may indicate the form has JavaScript validation or protection that prevents automated input."
+                    )
                 
                 # Find and click OTP button
                 otp_button_selectors = [
@@ -1282,10 +1324,40 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         return document.body ? document.body.innerText.substring(0, 200) : '';
                     """)
                     
+                    # BETTER VALIDATION: Check if we're still on the same login form
+                    # If page still contains "Enter your email" and "Send One-Time Code", it means form submission failed
+                    login_form_indicators = [
+                        'Enter your email',
+                        'Send One-Time Code', 
+                        'Sign in with your email',
+                        'we\'ll send you a magic link'
+                    ]
+                    
+                    still_on_login_form = any(indicator in page_text_sample for indicator in login_form_indicators)
+                    
+                    if still_on_login_form:
+                        print(f"🔍 EmailOTP: ❌ Still on login form - form submission likely failed")
+                        print(f"🔍 EmailOTP: Page sample: {page_text_sample[:150]}...")
+                        
+                        # Check if the email field is empty (another sign of failure)
+                        try:
+                            current_email_value = self.driver.execute_script("""
+                                var emailInput = document.querySelector('input[type="email"], input[name*="email"], input[placeholder*="email" i]');
+                                return emailInput ? emailInput.value : null;
+                            """)
+                            
+                            if not current_email_value or current_email_value != username:
+                                print(f"🔍 EmailOTP: ❌ Email field is empty or wrong value: '{current_email_value}'")
+                                return AuthResult(
+                                    success=False,
+                                    error_message=f"Form submission failed. Still on login page with email field showing '{current_email_value}' instead of '{username}'. The website may require additional validation or have anti-automation measures."
+                                )
+                        except Exception as e:
+                            print(f"🔍 EmailOTP: Could not check email field value: {e}")
+                    
                     # Look for specific changes that indicate we moved past the login form
-                    if ('Welcome back!' not in page_text_sample and 
-                        'Enter your email' not in page_text_sample and
-                        len(page_text_sample.strip()) > 50):
+                    elif ('Welcome back!' not in page_text_sample and 
+                          len(page_text_sample.strip()) > 50):
                         print(f"🔍 EmailOTP: Page content changed significantly - indicates success")
                         print(f"🔍 EmailOTP: New page title: {page_title}")
                         print(f"🔍 EmailOTP: New page sample: {page_text_sample[:100]}...")
@@ -1323,19 +1395,26 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             continue
                     
                     if not found_error:
-                        # No error messages found, assume success and continue
-                        print("🔍 EmailOTP: ✅ No error messages found, assuming email submission was successful")
-                        return AuthResult(
-                            success=True,
-                            requires_additional_steps=True,
-                            step_type='email_otp',
-                            next_step_url=self.driver.current_url,
-                            response=None,  # Explicitly set None for JS-based auth
-                            step_data={
-                                'email': username,
-                                'verification_method': 'javascript'
-                            }
-                        )
+                        # Final check: if we're still on the same page with the same form, it's likely a failure
+                        if still_on_login_form:
+                            return AuthResult(
+                                success=False,
+                                error_message=f"Email OTP submission appears to have failed. Still on login form after submission. Page shows: {page_text_sample[:100]}..."
+                            )
+                        else:
+                            # No error messages found and we're not on login form, assume success
+                            print("🔍 EmailOTP: ✅ No error messages found, assuming email submission was successful")
+                            return AuthResult(
+                                success=True,
+                                requires_additional_steps=True,
+                                step_type='email_otp',
+                                next_step_url=self.driver.current_url,
+                                response=None,  # Explicitly set None for JS-based auth
+                                step_data={
+                                    'email': username,
+                                    'verification_method': 'javascript'
+                                }
+                            )
                     else:
                         # Found error messages
                         page_source_preview = self.driver.page_source[:500] if self.driver.page_source else "No content"
