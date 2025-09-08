@@ -196,18 +196,27 @@ def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
     if logging_config.get('log_to_file', True):
         log_filename = os.path.join(logs_dir, logging_config.get('log_filename', 'scraper.log'))
         
+        # Truncate log file on startup for fresh logs each run
+        try:
+            if os.path.exists(log_filename):
+                with open(log_filename, 'w') as f:
+                    pass  # Truncate the file
+                print(f"Truncated existing log file: {log_filename}")
+        except Exception as e:
+            print(f"Warning: Could not truncate log file {log_filename}: {e}")
+        
         if logging_config.get('rotate_logs', True):
-            # Rotating file handler - truncate on startup for fresh logs each run
+            # Rotating file handler - now starts with empty file
             file_handler = logging.handlers.RotatingFileHandler(
                 log_filename,
-                mode='w',  # Overwrite mode - fresh log for each run
+                mode='a',  # Append mode (file is already empty from truncation above)
                 maxBytes=10*1024*1024,  # 10MB
                 backupCount=5,
                 encoding='utf-8'
             )
         else:
-            # Regular file handler - truncate on startup for fresh logs each run
-            file_handler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
+            # Regular file handler - starts with empty file
+            file_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
             
         file_handler.setLevel(logging.DEBUG)  # File gets all logs
         file_handler.setFormatter(formatter)

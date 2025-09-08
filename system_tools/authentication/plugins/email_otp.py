@@ -425,7 +425,21 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
     def perform_login(self, session: requests.Session, form: LoginForm, 
                      username: str, password: str) -> AuthResult:
         """
-        Perform email OTP login - submit email and wait for code
+        Perform email OTP login using configured method priority
+        
+        Args:
+            session: requests.Session to use
+            form: Detected login form
+            username: Email address
+            password: Ignored for email OTP
+        """
+        print("🚀 EmailOTP: Starting prioritized authentication flow")
+        return self._execute_authentication_methods(session, form, username, password)
+    
+    def _perform_login_legacy(self, session: requests.Session, form: LoginForm, 
+                     username: str, password: str) -> AuthResult:
+        """
+        Legacy email OTP login method (kept for reference/fallback)
         
         Args:
             session: requests.Session to use
@@ -868,7 +882,7 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
     
     def perform_login_js(self, session, form, username: str, password: str) -> AuthResult:
         """
-        Perform email OTP login using configured method priority
+        Legacy JS-specific entry point - now delegates to main perform_login method
         
         Args:
             session: requests.Session 
@@ -879,8 +893,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
         Returns:
             AuthResult indicating success/failure
         """
-        print("🚀 EmailOTP: Starting prioritized authentication flow")
-        return self._execute_authentication_methods(session, form, username, password)
+        print("🔍 EmailOTP: perform_login_js called - delegating to main perform_login method")
+        return self.perform_login(session, form, username, password)
     
     def _attempt_javascript_authentication(self, session, form, username: str, password: str) -> AuthResult:
         """
@@ -982,13 +996,23 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             arguments[0].blur();
                         """, email_input)
                         
-                        # Verify the value was set
+                        # Verify the value was set with enhanced checking
                         actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
-                        if actual_value == username:
+                        
+                        # Take screenshot to verify visually
+                        self._take_debug_screenshot(f"verify_email_approach1", f"Verifying email set to '{actual_value}'")
+                        
+                        # Also check placeholder and visible text
+                        placeholder = self.driver.execute_script("return arguments[0].placeholder;", email_input)
+                        visible_value = self.driver.execute_script("return arguments[0].value || arguments[0].placeholder || 'EMPTY';", email_input)
+                        
+                        print(f"🔍 EmailOTP: Email verification - value: '{actual_value}', placeholder: '{placeholder}', visible: '{visible_value}'")
+                        
+                        if actual_value and actual_value == username:
                             success = True
                             print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 1: {username}")
                         else:
-                            print(f"🔍 EmailOTP: ⚠️ JavaScript approach 1 failed - got '{actual_value}', expected '{username}'")
+                            print(f"🔍 EmailOTP: ❌ JavaScript approach 1 FAILED - got '{actual_value}', expected '{username}'")
                     except Exception as e:
                         print(f"🔍 EmailOTP: JavaScript approach 1 failed: {e}")
                     
@@ -1010,13 +1034,15 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             
                             self.driver.execute_script("arguments[0].blur();", email_input)
                             
-                            # Verify
+                            # Verify with enhanced checking
                             actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
-                            if actual_value == username:
+                            self._take_debug_screenshot(f"verify_email_approach2", f"Verifying email set to '{actual_value}'")
+                            
+                            if actual_value and actual_value == username:
                                 success = True
                                 print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 2: {username}")
                             else:
-                                print(f"🔍 EmailOTP: ⚠️ JavaScript approach 2 failed - got '{actual_value}', expected '{username}'")
+                                print(f"🔍 EmailOTP: ❌ JavaScript approach 2 FAILED - got '{actual_value}', expected '{username}'")
                         except Exception as e:
                             print(f"🔍 EmailOTP: JavaScript approach 2 failed: {e}")
                     
@@ -1042,13 +1068,15 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                                 }}
                             """, email_input)
                             
-                            # Verify
+                            # Verify with enhanced checking
                             actual_value = self.driver.execute_script("return arguments[0].value;", email_input)
-                            if actual_value == username:
+                            self._take_debug_screenshot(f"verify_email_approach3", f"Verifying email set to '{actual_value}'")
+                            
+                            if actual_value and actual_value == username:
                                 success = True
                                 print(f"🔍 EmailOTP: ✅ Email set successfully via JavaScript approach 3 (React/Vue): {username}")
                             else:
-                                print(f"🔍 EmailOTP: ⚠️ JavaScript approach 3 failed - got '{actual_value}', expected '{username}'")
+                                print(f"🔍 EmailOTP: ❌ JavaScript approach 3 FAILED - got '{actual_value}', expected '{username}'")
                         except Exception as e:
                             print(f"🔍 EmailOTP: JavaScript approach 3 failed: {e}")
                     
@@ -1167,10 +1195,13 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                             return emailInput ? emailInput.value : null;
                         """, form_element)
                         
-                        if email_value == username:
+                        # Take screenshot to verify form state
+                        self._take_debug_screenshot("verify_form_email_value", f"Form email value: '{email_value}'")
+                        
+                        if email_value and email_value == username:
                             print(f"🔍 EmailOTP: ✅ Email value confirmed in form: {email_value}")
                         else:
-                            print(f"🔍 EmailOTP: ⚠️ Email value in form: '{email_value}', expected: '{username}'")
+                            print(f"🔍 EmailOTP: ❌ FORM EMAIL VERIFICATION FAILED - got: '{email_value}', expected: '{username}'")
                             # Try to set it again directly on the form
                             self.driver.execute_script(f"""
                                 var form = arguments[0];
@@ -1182,11 +1213,25 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                                 }}
                             """, form_element)
                         
+                        # Store current state for verification
+                        current_url_before = self.driver.current_url
+                        current_page_hash = hash(self.driver.page_source[:1000])
+                        
                         # Submit the form
                         self.driver.execute_script("arguments[0].submit();", form_element)
-                        form_submitted = True
-                        print(f"🔍 EmailOTP: ✅ Form submitted directly")
-                        self._take_debug_screenshot("after_form_submit", "Form submitted directly")
+                        time.sleep(2)  # Wait for potential redirect or page change
+                        
+                        # Verify if form submission actually worked
+                        url_after = self.driver.current_url  
+                        page_hash_after = hash(self.driver.page_source[:1000])
+                        
+                        if url_after != current_url_before or page_hash_after != current_page_hash:
+                            form_submitted = True
+                            print(f"🔍 EmailOTP: ✅ Form submitted successfully - page changed")
+                            self._take_debug_screenshot("after_form_submit", "Form submitted successfully - page changed")
+                        else:
+                            print(f"🔍 EmailOTP: ❌ Form submission FAILED - page unchanged")
+                            self._take_debug_screenshot("after_form_submit", "Form submission FAILED - page unchanged")
                         
                     else:
                         print(f"🔍 EmailOTP: ⚠️ No form element found for direct submission")
@@ -1337,18 +1382,37 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         continue
                 
                 if found_success:
-                    print("🔍 EmailOTP: ✅ Email OTP request appears successful!")
-                    return AuthResult(
-                        success=True,
-                        requires_additional_steps=True,
-                        step_type='email_otp',
-                        next_step_url=self.driver.current_url,
-                        response=None,  # Explicitly set None for JS-based auth
-                        step_data={
-                            'email': username,
-                            'verification_method': 'javascript'
-                        }
-                    )
+                    # CRITICAL: Verify we're actually NOT still on the same login form
+                    # Check if we still have the email input field and "Send One-Time Code" button
+                    still_on_login = False
+                    try:
+                        # Look for the login form elements
+                        email_field = self.driver.find_element(By.CSS_SELECTOR, 'input[type="email"], input[placeholder*="email" i]')
+                        send_button = self.driver.find_element(By.XPATH, '//button[contains(text(), "Send One-Time Code")]')
+                        
+                        if email_field and send_button:
+                            still_on_login = True
+                            print("🔍 EmailOTP: ❌ FALSE SUCCESS - Still on login form with Send One-Time Code button")
+                    except:
+                        print("🔍 EmailOTP: ✅ Login form elements not found - likely moved past login")
+                    
+                    if still_on_login:
+                        # We're still on the login form - this is NOT success
+                        print("🔍 EmailOTP: ❌ SUCCESS DETECTION FAILED - Still showing login form")
+                        # Continue with failure detection logic below
+                    else:
+                        print("🔍 EmailOTP: ✅ Email OTP request appears successful!")
+                        return AuthResult(
+                            success=True,
+                            requires_additional_steps=True,
+                            step_type='email_otp',
+                            next_step_url=self.driver.current_url,
+                            response=None,  # Explicitly set None for JS-based auth
+                            step_data={
+                                'email': username,
+                                'verification_method': 'javascript'
+                            }
+                        )
                 else:
                     # Check if URL changed to something meaningful (not just same page reload)
                     current_page_url = self.driver.current_url
