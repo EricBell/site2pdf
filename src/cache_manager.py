@@ -332,6 +332,24 @@ class CacheManager:
             self.logger.error(f"Failed to get resume URLs: {e}")
             return all_urls
     
+    def session_exists(self, session_id: str) -> bool:
+        """
+        Check if a session exists.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            bool: True if session exists
+        """
+        try:
+            session_dir = self.sessions_dir / session_id
+            session_file = session_dir / "session.json"
+            # Check both compressed and uncompressed versions
+            return session_file.exists() or (session_dir / "session.json.gz").exists()
+        except Exception:
+            return False
+    
     def _update_session_progress(self, session_id: str, url: str, status: str) -> None:
         """Update session progress tracking"""
         try:
@@ -422,7 +440,7 @@ class CacheManager:
     
     def cleanup_old_sessions(self, max_age_days: int = 30, keep_completed: int = 10) -> int:
         """
-        Clean up old cache sessions.
+        Clean up old cache sessions and preview sessions.
         
         Args:
             max_age_days: Remove sessions older than this many days
@@ -444,6 +462,7 @@ class CacheManager:
             completed_sessions.sort(key=lambda x: x.get('last_modified', ''), reverse=True)
             sessions_to_keep = set(s['session_id'] for s in completed_sessions[:keep_completed])
             
+            # Clean old cache sessions
             for session in sessions:
                 session_id = session['session_id']
                 last_modified = datetime.fromisoformat(session.get('last_modified', ''))
@@ -460,12 +479,306 @@ class CacheManager:
                         cleaned_count += 1
                         self.logger.info(f"Cleaned up old session: {session_id}")
             
+            # Clean old preview sessions
+            cleaned_count += self._cleanup_old_previews(cutoff_date)
+            
             return cleaned_count
             
         except Exception as e:
             self.logger.error(f"Failed to cleanup sessions: {e}")
             return cleaned_count
     
+    def _cleanup_old_previews(self, cutoff_date: datetime) -> int:
+        """
+        Clean up old preview sessions.
+        
+        Args:
+            cutoff_date: Remove previews older than this date
+            
+        Returns:
+            Number of preview sessions cleaned up
+        """
+        cleaned_count = 0
+        try:
+            if not self.previews_dir.exists():
+                return 0
+                
+            for preview_dir in self.previews_dir.iterdir():
+                if not preview_dir.is_dir():
+                    continue
+                
+                # Check preview metadata to get creation date
+                preview_file = preview_dir / 'preview.json'
+                if preview_file.exists():
+                    try:
+                        with open(preview_file, 'r', encoding='utf-8') as f:
+                            preview_data = json.load(f)
+                        
+                        created_at_str = preview_data.get('created_at', '')
+                        if created_at_str:
+                            created_at = datetime.fromisoformat(created_at_str)
+                            if created_at < cutoff_date:
+                                shutil.rmtree(preview_dir)
+                                cleaned_count += 1
+                                self.logger.info(f"Cleaned up old preview: {preview_dir.name}")
+                    except (json.JSONDecodeError, ValueError, OSError) as e:
+                        self.logger.warning(f"Failed to process preview {preview_dir.name}: {e}")
+                        # Remove corrupted preview sessions
+                        try:
+                            shutil.rmtree(preview_dir)
+                            cleaned_count += 1
+                            self.logger.info(f"Cleaned up corrupted preview: {preview_dir.name}")
+                        except OSError:
+                            pass
+                else:
+                    # No metadata file - likely orphaned, remove it
+                    try:
+                        shutil.rmtree(preview_dir)
+                        cleaned_count += 1
+                        self.logger.info(f"Cleaned up orphaned preview: {preview_dir.name}")
+                    except OSError:
+                        pass
+            
+            return cleaned_count
+            
+        except Exception as e:
+            self.logger.error(f"Failed to cleanup preview sessions: {e}")
+            return cleaned_count
+    
+    def validate_cache_health(self) -> Dict[str, Any]:
+        """
+        Validate cache health and return diagnostic information.
+        
+        Returns:
+            Dict containing cache health information
+        """
+        health_report = {
+            'status': 'healthy',
+            'issues': [],
+            'sessions': {
+                'total': 0,
+                'valid': 0,
+                'corrupted': 0,
+                'orphaned': 0
+            },
+            'previews': {
+                'total': 0,
+                'valid': 0,
+                'orphaned': 0
+            },
+            'disk_usage': {
+                'sessions_size': 0,
+                'previews_size': 0,
+                'total_size': 0
+            },
+            'recommendations': []
+        }
+        
+        try:
+            # Check sessions directory
+            if self.sessions_dir.exists():
+                health_report = self._validate_sessions(health_report)
+            else:
+                health_report['issues'].append("Sessions directory does not exist")
+                health_report['status'] = 'unhealthy'
+            
+            # Check previews directory  
+            if self.previews_dir.exists():
+                health_report = self._validate_previews(health_report)
+            else:
+                health_report['issues'].append("Previews directory does not exist")
+                health_report['status'] = 'unhealthy'
+            
+            # Check for orphaned project cache
+            project_cache = Path('cache')
+            if project_cache.exists():
+                health_report['issues'].append("Orphaned project cache directory found")
+                health_report['recommendations'].append("Remove orphaned ./cache/ directory")
+                if health_report['status'] == 'healthy':
+                    health_report['status'] = 'needs_attention'
+            
+            # Generate recommendations and update status based on issues
+            if health_report['sessions']['corrupted'] > 0:
+                health_report['recommendations'].append(f"Clean {health_report['sessions']['corrupted']} corrupted session(s)")
+                if health_report['status'] == 'healthy':
+                    health_report['status'] = 'needs_attention'
+            
+            if health_report['sessions']['orphaned'] > 0:
+                health_report['recommendations'].append(f"Clean {health_report['sessions']['orphaned']} orphaned session(s)")
+                if health_report['status'] == 'healthy':
+                    health_report['status'] = 'needs_attention'
+            
+            if health_report['previews']['orphaned'] > 0:
+                health_report['recommendations'].append(f"Clean {health_report['previews']['orphaned']} orphaned preview(s)")
+                if health_report['status'] == 'healthy':
+                    health_report['status'] = 'needs_attention'
+            
+            return health_report
+            
+        except Exception as e:
+            self.logger.error(f"Cache health validation failed: {e}")
+            health_report['status'] = 'error'
+            health_report['issues'].append(f"Validation error: {str(e)}")
+            return health_report
+    
+    def _validate_sessions(self, health_report: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate session cache health"""
+        try:
+            for session_dir in self.sessions_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                    
+                health_report['sessions']['total'] += 1
+                
+                # Check session metadata
+                session_file = session_dir / 'session.json'
+                if not session_file.exists():
+                    health_report['sessions']['orphaned'] += 1
+                    health_report['issues'].append(f"Session missing metadata: {session_dir.name}")
+                    continue
+                
+                try:
+                    with open(session_file, 'r', encoding='utf-8') as f:
+                        session_data = json.load(f)
+                    
+                    # Basic validation
+                    required_fields = ['session_id', 'base_url', 'created_at']
+                    missing_fields = [f for f in required_fields if f not in session_data]
+                    
+                    if missing_fields:
+                        health_report['sessions']['corrupted'] += 1
+                        health_report['issues'].append(f"Session {session_dir.name} missing fields: {missing_fields}")
+                    else:
+                        health_report['sessions']['valid'] += 1
+                        
+                    # Calculate directory size
+                    dir_size = sum(f.stat().st_size for f in session_dir.rglob('*') if f.is_file())
+                    health_report['disk_usage']['sessions_size'] += dir_size
+                        
+                except (json.JSONDecodeError, IOError) as e:
+                    health_report['sessions']['corrupted'] += 1
+                    health_report['issues'].append(f"Session {session_dir.name} corrupted: {str(e)}")
+                    
+            return health_report
+            
+        except Exception as e:
+            health_report['issues'].append(f"Session validation error: {str(e)}")
+            return health_report
+    
+    def _validate_previews(self, health_report: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate preview cache health"""
+        try:
+            for preview_dir in self.previews_dir.iterdir():
+                if not preview_dir.is_dir():
+                    continue
+                    
+                health_report['previews']['total'] += 1
+                
+                # Check preview metadata
+                preview_file = preview_dir / 'preview.json'
+                if not preview_file.exists():
+                    health_report['previews']['orphaned'] += 1
+                    health_report['issues'].append(f"Preview missing metadata: {preview_dir.name}")
+                    continue
+                
+                try:
+                    with open(preview_file, 'r', encoding='utf-8') as f:
+                        preview_data = json.load(f)
+                    
+                    # Basic validation
+                    if 'base_url' in preview_data and 'created_at' in preview_data:
+                        health_report['previews']['valid'] += 1
+                    else:
+                        health_report['previews']['orphaned'] += 1
+                        health_report['issues'].append(f"Preview {preview_dir.name} missing required fields")
+                        
+                    # Calculate directory size
+                    dir_size = sum(f.stat().st_size for f in preview_dir.rglob('*') if f.is_file())
+                    health_report['disk_usage']['previews_size'] += dir_size
+                        
+                except (json.JSONDecodeError, IOError) as e:
+                    health_report['previews']['orphaned'] += 1
+                    health_report['issues'].append(f"Preview {preview_dir.name} corrupted: {str(e)}")
+                    
+            return health_report
+            
+        except Exception as e:
+            health_report['issues'].append(f"Preview validation error: {str(e)}")
+            return health_report
+    
+    def fix_cache_issues(self, dry_run: bool = True) -> Dict[str, Any]:
+        """
+        Fix common cache issues.
+        
+        Args:
+            dry_run: If True, only report what would be fixed without making changes
+            
+        Returns:
+            Dict containing fix results
+        """
+        fix_report = {
+            'actions_taken': [],
+            'errors': [],
+            'dry_run': dry_run
+        }
+        
+        try:
+            # Get health report first
+            health_report = self.validate_cache_health()
+            
+            # Remove corrupted sessions
+            for session_dir in self.sessions_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                    
+                session_file = session_dir / 'session.json'
+                if not session_file.exists():
+                    action = f"Remove orphaned session directory: {session_dir.name}"
+                    fix_report['actions_taken'].append(action)
+                    
+                    if not dry_run:
+                        try:
+                            shutil.rmtree(session_dir)
+                            self.logger.info(f"Removed orphaned session: {session_dir.name}")
+                        except Exception as e:
+                            fix_report['errors'].append(f"Failed to remove {session_dir.name}: {str(e)}")
+            
+            # Remove orphaned previews
+            for preview_dir in self.previews_dir.iterdir():
+                if not preview_dir.is_dir():
+                    continue
+                    
+                preview_file = preview_dir / 'preview.json'
+                if not preview_file.exists():
+                    action = f"Remove orphaned preview directory: {preview_dir.name}"
+                    fix_report['actions_taken'].append(action)
+                    
+                    if not dry_run:
+                        try:
+                            shutil.rmtree(preview_dir)
+                            self.logger.info(f"Removed orphaned preview: {preview_dir.name}")
+                        except Exception as e:
+                            fix_report['errors'].append(f"Failed to remove {preview_dir.name}: {str(e)}")
+            
+            # Remove orphaned project cache
+            project_cache = Path('cache')
+            if project_cache.exists() and project_cache.is_dir():
+                action = "Remove orphaned project cache directory"
+                fix_report['actions_taken'].append(action)
+                
+                if not dry_run:
+                    try:
+                        shutil.rmtree(project_cache)
+                        self.logger.info("Removed orphaned project cache directory")
+                    except Exception as e:
+                        fix_report['errors'].append(f"Failed to remove project cache: {str(e)}")
+            
+            return fix_report
+            
+        except Exception as e:
+            fix_report['errors'].append(f"Fix operation failed: {str(e)}")
+            return fix_report
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         try:

@@ -192,6 +192,99 @@ def stats():
 
 
 @cache.command()
+@click.option('--fix', is_flag=True, help='Fix detected issues (default: dry run)')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed diagnostics')
+def doctor(fix, verbose):
+    """Validate cache health and fix issues."""
+    try:
+        cache_manager = CacheManager()
+        
+        # Get health report
+        click.echo("🔍 Analyzing cache health...")
+        health_report = cache_manager.validate_cache_health()
+        
+        # Display status
+        status = health_report['status']
+        status_icons = {
+            'healthy': '✅',
+            'needs_attention': '⚠️ ',
+            'unhealthy': '❌',
+            'error': '💥'
+        }
+        
+        click.echo(f"\n{status_icons.get(status, '❓')} Cache Status: {status.upper()}")
+        click.echo("═" * 50)
+        
+        # Display session stats
+        sessions = health_report['sessions']
+        click.echo(f"📁 Sessions: {sessions['total']} total")
+        click.echo(f"   ✅ Valid: {sessions['valid']}")
+        click.echo(f"   💥 Corrupted: {sessions['corrupted']}")
+        click.echo(f"   🗑️  Orphaned: {sessions['orphaned']}")
+        
+        # Display preview stats
+        previews = health_report['previews']
+        click.echo(f"\n👁️  Previews: {previews['total']} total")
+        click.echo(f"   ✅ Valid: {previews['valid']}")
+        click.echo(f"   🗑️  Orphaned: {previews['orphaned']}")
+        
+        # Display disk usage
+        usage = health_report['disk_usage']
+        sessions_mb = usage['sessions_size'] / (1024 * 1024)
+        previews_mb = usage['previews_size'] / (1024 * 1024)
+        total_mb = sessions_mb + previews_mb
+        
+        click.echo(f"\n💾 Disk Usage:")
+        click.echo(f"   Sessions: {sessions_mb:.1f} MB")
+        click.echo(f"   Previews: {previews_mb:.1f} MB") 
+        click.echo(f"   Total: {total_mb:.1f} MB")
+        
+        # Display issues
+        if health_report['issues']:
+            click.echo(f"\n🚨 Issues Found ({len(health_report['issues'])}):")
+            for i, issue in enumerate(health_report['issues'], 1):
+                click.echo(f"   {i}. {issue}")
+        
+        # Display recommendations
+        if health_report['recommendations']:
+            click.echo(f"\n💡 Recommendations:")
+            for rec in health_report['recommendations']:
+                click.echo(f"   • {rec}")
+        
+        # Verbose details
+        if verbose and health_report['issues']:
+            click.echo(f"\n🔍 Detailed Diagnostics:")
+            click.echo(f"   Cache directory: {cache_manager.cache_dir}")
+            click.echo(f"   Sessions directory: {cache_manager.sessions_dir}")
+            click.echo(f"   Previews directory: {cache_manager.previews_dir}")
+        
+        # Fix issues if requested
+        if health_report['issues'] or health_report['recommendations']:
+            if fix:
+                click.echo(f"\n🔧 Fixing issues...")
+                fix_report = cache_manager.fix_cache_issues(dry_run=False)
+                
+                if fix_report['actions_taken']:
+                    click.echo(f"\n✅ Actions completed:")
+                    for action in fix_report['actions_taken']:
+                        click.echo(f"   • {action}")
+                
+                if fix_report['errors']:
+                    click.echo(f"\n❌ Errors encountered:")
+                    for error in fix_report['errors']:
+                        click.echo(f"   • {error}")
+                
+                click.echo(f"\n🎉 Cache doctor completed!")
+            else:
+                click.echo(f"\n💡 Run with --fix to automatically resolve issues")
+        else:
+            click.echo(f"\n🎉 Cache is healthy - no issues found!")
+        
+    except Exception as e:
+        click.echo(f"❌ Cache doctor failed: {e}")
+
+
+@cache.command()
 @click.argument('session_id', required=True)
 @click.option('--format', '-f', type=click.Choice(['pdf', 'markdown', 'md']), 
               help='Output format for cached data')
