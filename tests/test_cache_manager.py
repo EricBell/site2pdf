@@ -266,12 +266,20 @@ class TestCacheManager:
         orphaned_dir = cache_manager.sessions_dir / 'orphaned_session_dry_run'
         orphaned_dir.mkdir(parents=True, exist_ok=True)
         
+        # Create corrupted session
+        corrupted_dir = cache_manager.sessions_dir / 'corrupted_session_dry_run'
+        corrupted_dir.mkdir(parents=True, exist_ok=True)
+        corrupted_file = corrupted_dir / 'session.json'
+        with open(corrupted_file, 'w') as f:
+            f.write('{"invalid": "json"')  # Missing closing brace
+        
         # Fix issues (dry run)
         fix_report = cache_manager.fix_cache_issues(dry_run=True)
         
         assert fix_report['dry_run'] is True
-        assert len(fix_report['actions_taken']) >= 1
+        assert len(fix_report['actions_taken']) >= 2  # Both orphaned and corrupted
         assert orphaned_dir.exists()  # Should still exist in dry run
+        assert corrupted_dir.exists()  # Should still exist in dry run
 
     def test_fix_cache_issues_real_fix(self, cache_manager):
         """Test cache issue fixing with actual fixes"""
@@ -279,12 +287,20 @@ class TestCacheManager:
         orphaned_dir = cache_manager.sessions_dir / 'orphaned_session_real_fix'
         orphaned_dir.mkdir(parents=True, exist_ok=True)
         
+        # Create corrupted session
+        corrupted_dir = cache_manager.sessions_dir / 'corrupted_session_real_fix'
+        corrupted_dir.mkdir(parents=True, exist_ok=True)
+        corrupted_file = corrupted_dir / 'session.json'
+        with open(corrupted_file, 'w') as f:
+            f.write('{"invalid": "json"')  # Missing closing brace
+        
         # Fix issues (real)
         fix_report = cache_manager.fix_cache_issues(dry_run=False)
         
         assert fix_report['dry_run'] is False
-        assert len(fix_report['actions_taken']) >= 1
+        assert len(fix_report['actions_taken']) >= 2  # Both orphaned and corrupted
         assert not orphaned_dir.exists()  # Should be removed
+        assert not corrupted_dir.exists()  # Should be removed
 
     def test_get_cache_stats(self, cache_manager, sample_session_data):
         """Test cache statistics generation"""
@@ -377,3 +393,43 @@ class TestCacheManager:
         cached_pages = cache_manager.load_cached_pages(session_id)
         assert len(cached_pages) == 1
         assert cached_pages[0]['url'] == sample_page_data['url']
+
+    def test_fix_corrupted_sessions_with_missing_fields(self, cache_manager):
+        """Test fixing corrupted sessions with missing required fields"""
+        # Create corrupted session with missing required fields
+        corrupted_dir = cache_manager.sessions_dir / 'corrupted_missing_fields'
+        corrupted_dir.mkdir(parents=True, exist_ok=True)
+        corrupted_file = corrupted_dir / 'session.json'
+        
+        # Create session data missing required fields
+        with open(corrupted_file, 'w') as f:
+            json.dump({'some_field': 'value'}, f)  # Missing session_id, base_url, created_at
+        
+        # Fix issues
+        fix_report = cache_manager.fix_cache_issues(dry_run=False)
+        
+        # Should be identified and removed
+        actions_text = ' '.join(fix_report['actions_taken'])
+        assert 'corrupted_missing_fields' in actions_text
+        assert 'missing fields' in actions_text
+        assert not corrupted_dir.exists()
+
+    def test_fix_corrupted_sessions_with_json_errors(self, cache_manager):
+        """Test fixing corrupted sessions with JSON parse errors"""
+        # Create corrupted session with invalid JSON
+        corrupted_dir = cache_manager.sessions_dir / 'corrupted_json_error'
+        corrupted_dir.mkdir(parents=True, exist_ok=True)
+        corrupted_file = corrupted_dir / 'session.json'
+        
+        # Create invalid JSON
+        with open(corrupted_file, 'w') as f:
+            f.write('{"session_id": "test", "incomplete": ')  # Invalid JSON
+        
+        # Fix issues
+        fix_report = cache_manager.fix_cache_issues(dry_run=False)
+        
+        # Should be identified and removed
+        actions_text = ' '.join(fix_report['actions_taken'])
+        assert 'corrupted_json_error' in actions_text
+        assert 'JSON error' in actions_text
+        assert not corrupted_dir.exists()

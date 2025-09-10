@@ -726,12 +726,14 @@ class CacheManager:
             # Get health report first
             health_report = self.validate_cache_health()
             
-            # Remove corrupted sessions
+            # Remove orphaned and corrupted sessions
             for session_dir in self.sessions_dir.iterdir():
                 if not session_dir.is_dir():
                     continue
                     
                 session_file = session_dir / 'session.json'
+                
+                # Check for orphaned sessions (missing metadata file)
                 if not session_file.exists():
                     action = f"Remove orphaned session directory: {session_dir.name}"
                     fix_report['actions_taken'].append(action)
@@ -742,6 +744,39 @@ class CacheManager:
                             self.logger.info(f"Removed orphaned session: {session_dir.name}")
                         except Exception as e:
                             fix_report['errors'].append(f"Failed to remove {session_dir.name}: {str(e)}")
+                
+                # Check for corrupted sessions (invalid JSON)
+                elif session_file.exists():
+                    try:
+                        # Try to load and parse the session file
+                        with open(session_file, 'r', encoding='utf-8') as f:
+                            session_data = json.load(f)
+                        
+                        # Basic validation - check for required fields
+                        required_fields = ['session_id', 'base_url', 'created_at']
+                        missing_fields = [f for f in required_fields if f not in session_data]
+                        
+                        if missing_fields:
+                            action = f"Remove corrupted session directory: {session_dir.name} (missing fields: {missing_fields})"
+                            fix_report['actions_taken'].append(action)
+                            
+                            if not dry_run:
+                                try:
+                                    shutil.rmtree(session_dir)
+                                    self.logger.info(f"Removed corrupted session: {session_dir.name}")
+                                except Exception as e:
+                                    fix_report['errors'].append(f"Failed to remove corrupted {session_dir.name}: {str(e)}")
+                        
+                    except (json.JSONDecodeError, IOError) as e:
+                        action = f"Remove corrupted session directory: {session_dir.name} (JSON error: {str(e)})"
+                        fix_report['actions_taken'].append(action)
+                        
+                        if not dry_run:
+                            try:
+                                shutil.rmtree(session_dir)
+                                self.logger.info(f"Removed corrupted session: {session_dir.name}")
+                            except Exception as e:
+                                fix_report['errors'].append(f"Failed to remove corrupted {session_dir.name}: {str(e)}")
             
             # Remove orphaned previews
             for preview_dir in self.previews_dir.iterdir():
