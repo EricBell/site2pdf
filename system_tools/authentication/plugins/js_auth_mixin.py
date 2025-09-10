@@ -273,7 +273,8 @@ class JavaScriptAuthMixin:
                 raise Exception("Xvfb failed to start")
             
         except Exception as e:
-            logger.warning(f"Virtual display setup failed: {e}")
+            error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+            logger.warning(f"Virtual display setup failed: {error_msg}")
             logger.info("🔄 Ensuring headless mode is enabled")
             self.js_config['headless'] = True
             return True
@@ -385,16 +386,16 @@ class JavaScriptAuthMixin:
                     chromedriver_path = ChromeDriverManager().install()
                     logger.info(f"Downloaded ChromeDriver via webdriver-manager")
                 except Exception as wdm_error:
-                    logger.error(f"ChromeDriver installation failed: {wdm_error}")
+                    error_msg = str(wdm_error).split('\n')[0] if '\n' in str(wdm_error) else str(wdm_error)
+                    logger.error(f"ChromeDriver installation failed: {error_msg}")
                     raise wdm_error
                 
             service = ChromeService(chromedriver_path)
             driver = webdriver.Chrome(service=service, options=options)
         except Exception as e:
-            logger.error(f"ChromeDriver creation failed: {e}")
+            error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+            logger.error(f"ChromeDriver creation failed: {error_msg}")
             logger.error(f"Chrome binary path: {self.js_config.get('chrome_binary_path', 'default')}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
             raise e
         
         # Configure timeouts
@@ -626,7 +627,9 @@ class JavaScriptAuthMixin:
                             f.write(f"{event}\n")
                         
         except Exception as e:
-            logger.warning(f"Failed to log network requests: {e}")
+            # Extract just the error message without selenium stacktrace
+            error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+            logger.warning(f"Failed to log network requests: {error_msg}")
     
     def _take_debug_screenshot(self, step_name: str, description: str = ""):
         """Take screenshot for debugging authentication steps"""

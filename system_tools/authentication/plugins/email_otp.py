@@ -60,7 +60,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                     print(f"🔍 EmailOTP: ❌ Method '{method}' failed: {result.error_message}")
                     
             except Exception as e:
-                print(f"🔍 EmailOTP: ❌ Method '{method}' threw exception: {str(e)}")
+                error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+                print(f"🔍 EmailOTP: ❌ Method '{method}' threw exception: {error_msg}")
         
         # All methods failed
         print(f"🔍 EmailOTP: 🚨 ALL METHODS FAILED - Returning failure result")
@@ -159,7 +160,8 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             print(f"🔍 EmailOTP: No login URL discovered, falling back to base URL")
             
         except Exception as e:
-            print(f"🔍 EmailOTP: Auto-discovery failed: {e}")
+            error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+            print(f"🔍 EmailOTP: Auto-discovery failed: {error_msg}")
             # If auto-discovery fails, fall back to base URL
             pass
         
@@ -1325,7 +1327,9 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         self._take_debug_screenshot("after_manual_fetch", "Manual fetch submission attempted")
                         
                     except Exception as fetch_error:
-                        print(f"🔍 EmailOTP: Manual fetch submission failed: {fetch_error}")
+                        # Extract just the error message without selenium stacktrace
+                        error_msg = str(fetch_error).split('\n')[0] if '\n' in str(fetch_error) else str(fetch_error)
+                        print(f"🔍 EmailOTP: Manual fetch submission failed: {error_msg}")
                 
                 if not form_submitted:
                     print(f"🔍 EmailOTP: ❌ All form submission approaches failed")
@@ -1805,71 +1809,78 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
             import tempfile
             import time
             
-            # Try to open browser for user
+            # Use the existing WebDriver instance for manual authentication
             login_url = form.action_url
             print(f"\n📋 Manual Authentication Instructions:")
-            print(f"   1. Please open your browser and navigate to: {login_url}")
+            print(f"   1. A browser window will open automatically")
             print(f"   2. Enter your email: {username}")
             print(f"   3. Complete the email OTP authentication process")
-            print(f"   4. Once logged in, copy the final authenticated URL")
-            print(f"   5. Return here and paste the URL when prompted")
+            print(f"   4. Once logged in, return here and press Enter")
+            print(f"   5. The app will automatically extract your authentication cookies")
             
             try:
-                # Try Firefox first (preferred browser)
-                import subprocess
-                import os
+                # Create or reuse WebDriver for manual authentication
+                if not hasattr(self, 'driver') or not self.driver:
+                    print(f"🔄 Creating new WebDriver session for manual authentication...")
+                    # Create new WebDriver in non-headless mode for manual interaction
+                    self.js_config['headless'] = False
+                    self.driver = self._create_chrome_driver() or self._create_firefox_driver()
+                    
+                    if not self.driver:
+                        raise Exception("Failed to create WebDriver for manual authentication")
                 
-                # Check if we're in WSL and try to use Windows Firefox if available
-                if os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower():
-                    print("🐧 WSL detected - trying to open Firefox via Windows")
-                    try:
-                        # Try Windows Firefox paths
-                        firefox_paths = [
-                            "/mnt/c/Program Files/Mozilla Firefox/firefox.exe",
-                            "/mnt/c/Program Files (x86)/Mozilla Firefox/firefox.exe"
-                        ]
-                        firefox_found = False
-                        for path in firefox_paths:
-                            if os.path.exists(path):
-                                subprocess.Popen([path, login_url])
-                                firefox_found = True
-                                print(f"✅ Opened Firefox via Windows: {path}")
-                                break
+                print(f"🌐 Opening authentication page in browser...")
+                
+                # Ensure browser is in interactive mode (non-headless)
+                if self.js_config.get('headless', True):
+                    print(f"🔄 Switching to interactive mode...")
+                    self._original_headless = True
+                    
+                    # Clean up current driver and restart in non-headless mode
+                    if self.driver:
+                        self.driver.quit()
                         
-                        if not firefox_found:
-                            # Fallback to cmd.exe start
-                            subprocess.Popen(["cmd.exe", "/c", "start", login_url])
-                            print(f"✅ Opened browser via Windows cmd")
-                            
-                    except Exception as wsl_error:
-                        print(f"⚠️ WSL browser opening failed: {wsl_error}")
-                        # Try Linux Firefox
-                        subprocess.Popen(["firefox", login_url])
-                        print(f"✅ Opened Firefox on Linux")
-                else:
-                    # Try Firefox directly on Linux
-                    try:
-                        subprocess.Popen(["firefox", login_url])
-                        print(f"✅ Opened Firefox on Linux")
-                    except FileNotFoundError:
-                        # Fallback to system default browser
-                        webbrowser.open(login_url)
-                        print(f"✅ Opened default browser (Firefox not found)")
+                    self.js_config['headless'] = False
+                    self.driver = self._create_chrome_driver() or self._create_firefox_driver()
+                    
+                    if not self.driver:
+                        raise Exception("Failed to create interactive WebDriver for manual authentication")
+                
+                self.driver.get(login_url)
+                
+                # Take screenshot for debugging
+                self._take_debug_screenshot("manual_auth_start", "Manual authentication page loaded")
+                
+                print(f"✅ Browser opened with login page")
+                print(f"💡 Complete authentication in the browser window, then return here")
                         
             except Exception as browser_error:
-                print(f"⚠️ Could not open browser automatically: {browser_error}")
-                print(f"   Please manually navigate to: {login_url}")
-                print(f"   Recommended: Use Firefox for best compatibility")
+                error_msg = str(browser_error).split('\n')[0] if '\n' in str(browser_error) else str(browser_error)
+                print(f"⚠️ Could not set up WebDriver for manual authentication: {error_msg}")
+                print(f"   Falling back to external browser method...")
+                
+                # Fallback to external browser opening
+                try:
+                    import subprocess
+                    if os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower():
+                        subprocess.Popen(["cmd.exe", "/c", "start", login_url])
+                        print(f"✅ Opened external browser via Windows")
+                    else:
+                        webbrowser.open(login_url)
+                        print(f"✅ Opened external browser")
+                except Exception as fallback_error:
+                    error_msg = str(fallback_error).split('\n')[0] if '\n' in str(fallback_error) else str(fallback_error)
+                    print(f"⚠️ External browser opening also failed: {error_msg}")
+                    print(f"   Please manually navigate to: {login_url}")
             
             # Wait for user to complete authentication
             print(f"\n⏳ Waiting for you to complete authentication...")
             
-            # Prompt user for the final authenticated URL
+            # Wait for user to complete authentication, then automatically extract cookies
             max_attempts = 3
             for attempt in range(max_attempts):
                 try:
                     import sys
-                    import select
                     
                     # Check if we're in an interactive terminal
                     if not sys.stdin.isatty():
@@ -1877,102 +1888,140 @@ class EmailOTPPlugin(JavaScriptAuthMixin, BaseAuthPlugin):
                         print("💡 Try running this command from an interactive terminal (not via automation)")
                         break
                     
-                    print(f"\nPlease enter the final URL after successful authentication (attempt {attempt + 1}/{max_attempts}): ", end="", flush=True)
+                    print(f"\nPress Enter when you've completed authentication in the browser (attempt {attempt + 1}/{max_attempts}): ", end="", flush=True)
                     
-                    # Add timeout for input  
-                    if sys.platform != 'win32':
-                        # Unix-like systems - use select for timeout
-                        import select
-                        i, o, e = select.select([sys.stdin], [], [], 120)  # 2 minute timeout
-                        if i:
-                            authenticated_url = sys.stdin.readline().strip()
-                        else:
-                            print("❌ Timeout waiting for input (2 minutes)")
-                            continue
-                    else:
-                        # Windows fallback (no select support)
-                        authenticated_url = input().strip()
+                    # Wait for user confirmation
+                    try:
+                        input()  # Just wait for Enter key
+                    except (EOFError, KeyboardInterrupt):
+                        print(f"\n⛔ Manual authentication cancelled by user")
+                        return AuthResult(
+                            success=False,
+                            error_message="Manual authentication cancelled by user"
+                        )
                     
-                    if not authenticated_url:
-                        print("❌ Empty URL provided")
-                        continue
-                    
-                    if not authenticated_url.startswith('http'):
-                        print("❌ Invalid URL format (should start with http/https)")
-                        continue
-                    
-                    # Validate the URL by making a request
-                    import requests
-                    session = requests.Session()
-                    session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    })
-                    
-                    print(f"🔍 Validating authenticated URL...")
-                    response = session.get(authenticated_url, timeout=10)
-                    
-                    if response.status_code == 200:
-                        # Check if this looks like an authenticated page
-                        content_lower = response.text.lower()
+                    # Automatically extract cookies from WebDriver if available
+                    if hasattr(self, 'driver') and self.driver:
+                        print(f"🍪 Automatically extracting cookies from browser session...")
                         
-                        # Look for signs this is NOT a login page
-                        login_indicators = ['login', 'sign in', 'sign-in', 'signin', 'password', 'email']
-                        auth_indicators = ['dashboard', 'profile', 'logout', 'log out', 'welcome', 'account']
-                        
-                        login_count = sum(1 for indicator in login_indicators if indicator in content_lower)
-                        auth_count = sum(1 for indicator in auth_indicators if indicator in content_lower)
-                        
-                        if auth_count > login_count or authenticated_url != login_url:
-                            print(f"✅ Authentication appears successful!")
+                        try:
+                            # Get current URL to validate authentication
+                            authenticated_url = self.driver.current_url
+                            print(f"📍 Current browser URL: {authenticated_url}")
                             
-                            # Extract cookies from the session
-                            cookies = session.cookies
+                            # Extract all cookies from the driver
+                            browser_cookies = self.driver.get_cookies()
+                            extracted_cookies = {}
                             
-                            return AuthResult(
-                                success=True,
-                                response=response,
-                                next_step_url=authenticated_url,
-                                step_data={
-                                    'session_cookies': dict(cookies),
-                                    'message': 'Manual authentication completed successfully'
-                                }
-                            )
-                        else:
-                            print(f"⚠️  URL appears to still be on login page. Please ensure authentication is complete.")
+                            for cookie in browser_cookies:
+                                extracted_cookies[cookie['name']] = cookie['value']
+                            
+                            print(f"✅ Extracted {len(extracted_cookies)} cookies from browser session")
+                            
+                            # Create test session with extracted cookies
+                            import requests
+                            test_session = requests.Session()
+                            test_session.headers.update({
+                                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Referer': login_url
+                            })
+                            
+                            # Apply extracted cookies to test session
+                            from ..utils import extract_domain
+                            domain = extract_domain(authenticated_url)
+                            for name, value in extracted_cookies.items():
+                                test_session.cookies.set(name, value, domain=domain)
+                            
+                            # Test the authentication
+                            response = test_session.get(authenticated_url, timeout=10)
+                            
+                            # Validate authentication by checking page content
+                            content_lower = response.text.lower()
+                            login_indicators = ['login', 'sign in', 'sign-in', 'signin', 'password', 'email']
+                            auth_indicators = ['dashboard', 'profile', 'logout', 'log out', 'welcome', 'account']
+                            
+                            login_count = sum(1 for indicator in login_indicators if indicator in content_lower)
+                            auth_count = sum(1 for indicator in auth_indicators if indicator in content_lower)
+                            
+                            if auth_count > login_count or 'free access' not in content_lower:
+                                print(f"✅ Authentication validation successful!")
+                                
+                                # Cleanup: restore original headless setting if it was changed
+                                if hasattr(self, '_original_headless') and self._original_headless:
+                                    print(f"🔄 Restoring headless mode...")
+                                    self.js_config['headless'] = True
+                                    if hasattr(self, 'driver') and self.driver:
+                                        self.driver.quit()
+                                        self.driver = None
+                                
+                                return AuthResult(
+                                    success=True,
+                                    response=response,
+                                    next_step_url=authenticated_url,
+                                    step_data={
+                                        'manual_auth': True,
+                                        'authenticated_url': authenticated_url,
+                                        'message': 'Manual authentication completed successfully with automatic cookie extraction',
+                                        'session_cookies': extracted_cookies,
+                                        'session_headers': dict(test_session.headers)
+                                    }
+                                )
+                            else:
+                                print(f"⚠️ Authentication validation failed - page still appears to be login/signup")
+                                if attempt < max_attempts - 1:
+                                    print(f"   Please ensure you've completed authentication and try again")
+                                    continue
+                        
+                        except Exception as cookie_error:
+                            error_msg = str(cookie_error).split('\n')[0] if '\n' in str(cookie_error) else str(cookie_error)
+                            print(f"⚠️ Automatic cookie extraction failed: {error_msg}")
                             if attempt < max_attempts - 1:
+                                print(f"   Please try again")
                                 continue
                     else:
-                        print(f"❌ URL returned status code {response.status_code}")
+                        print(f"⚠️ No WebDriver session available for automatic cookie extraction")
                         if attempt < max_attempts - 1:
+                            print(f"   This shouldn't happen - please try again")
                             continue
                 
-                except EOFError:
-                    print(f"❌ Input stream closed - likely running in non-interactive environment")
-                    print(f"💡 Run from an interactive terminal for manual authentication")
-                    break
-                except KeyboardInterrupt:
-                    print(f"\n⛔ Manual authentication cancelled by user")
-                    return AuthResult(
-                        success=False,
-                        error_message="Manual authentication cancelled by user"
-                    )
                 except Exception as validation_error:
-                    print(f"❌ Error validating URL: {validation_error}")
+                    error_msg = str(validation_error).split('\n')[0] if '\n' in str(validation_error) else str(validation_error)
+                    print(f"❌ Error during authentication validation: {error_msg}")
                     if attempt < max_attempts - 1:
                         continue
             
             # All attempts failed
             print(f"\n❌ Manual authentication failed after {max_attempts} attempts")
+            
+            # Cleanup: restore original headless setting if it was changed
+            if hasattr(self, '_original_headless') and self._original_headless:
+                print(f"🔄 Restoring headless mode...")
+                self.js_config['headless'] = True
+                if hasattr(self, 'driver') and self.driver:
+                    self.driver.quit()
+                    self.driver = None
+            
             return AuthResult(
                 success=False,
                 error_message=f"Manual authentication failed after {max_attempts} attempts"
             )
             
         except Exception as e:
-            print(f"❌ Manual authentication error: {e}")
+            error_msg = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+            print(f"❌ Manual authentication error: {error_msg}")
+            
+            # Cleanup: restore original headless setting if it was changed
+            if hasattr(self, '_original_headless') and self._original_headless:
+                print(f"🔄 Restoring headless mode...")
+                self.js_config['headless'] = True
+                if hasattr(self, 'driver') and self.driver:
+                    self.driver.quit()
+                    self.driver = None
+            
             return AuthResult(
                 success=False,
-                error_message=f"Manual authentication error: {str(e)}"
+                error_message=f"Manual authentication error: {error_msg}"
             )
 
     def _attempt_direct_api_authentication(self, username: str, form) -> AuthResult:

@@ -422,7 +422,27 @@ class AuthenticationManager:
         
         # Create auth session
         auth_session = AuthSession(self.site_url)
-        auth_session.update_from_response(result.response)
+        
+        # Handle manual authentication specially
+        if result.step_data and result.step_data.get('manual_auth'):
+            # For manual auth, extract cookies and headers from step_data
+            auth_session.metadata['manual_auth'] = True
+            auth_session.metadata['authenticated_url'] = result.step_data.get('authenticated_url')
+            
+            # Use cookies and headers captured during manual authentication validation
+            session_cookies = result.step_data.get('session_cookies', {})
+            session_headers = result.step_data.get('session_headers', {})
+            
+            # Store the captured cookies and headers
+            auth_session.cookies.update(session_cookies)
+            auth_session.headers.update(session_headers)
+            
+            # Also update from response to get any additional cookies
+            auth_session.update_from_response(result.response)
+        else:
+            # For automated authentication, extract from response as usual
+            auth_session.update_from_response(result.response)
+        
         auth_session.set_expiry(24)  # 24 hours default
         
         return auth_session

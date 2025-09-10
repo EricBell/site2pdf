@@ -52,7 +52,7 @@ class AuthSession:
         for name, value in self.cookies.items():
             session.cookies.set(name, value, domain=self.domain)
         
-        # Set headers
+        # Set headers  
         session.headers.update(self.headers)
         
         return session
