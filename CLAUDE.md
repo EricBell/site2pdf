@@ -78,6 +78,21 @@ python run.py cache export session_id --format markdown
 
 ### Testing and Development
 ```bash
+# Run all tests
+pytest
+
+# Run tests with coverage report
+pytest --cov=src --cov=generators --cov=system_tools
+
+# Run specific test file
+pytest tests/test_scraper.py
+
+# Run tests with verbose output
+pytest -v
+
+# Run tests matching pattern
+pytest -k "test_authentication"
+
 # Check syntax of all Python files
 find . -name "*.py" -not -path "*/.venv/*" -exec python -m py_compile {} \;
 
@@ -215,3 +230,103 @@ The project uses a specific import structure:
 4. Ensure backward compatibility with existing sessions
 
 This architecture enables modular development while maintaining clean separation of concerns between web scraping, content processing, output generation, and system utilities.
+
+## Testing Framework
+
+### Test Structure
+The project uses pytest for testing with the following structure:
+```
+tests/
+├── __init__.py
+├── conftest.py                 # Test configuration and fixtures
+├── test_scraper.py            # Core scraping functionality tests
+├── test_authentication.py     # Authentication system tests
+├── test_cache_manager.py      # Cache functionality tests
+├── test_generators.py         # PDF/Markdown generation tests
+├── test_content_classifier.py # Content classification tests
+├── test_human_behavior.py     # Human behavior simulation tests
+└── fixtures/                  # Test data and mock responses
+    ├── sample_pages/
+    └── mock_responses/
+```
+
+### Test Categories
+- **Unit Tests**: Test individual functions and classes in isolation
+- **Integration Tests**: Test component interactions (e.g., scraper + cache)
+- **Authentication Tests**: Test login flows with mocked WebDriver
+- **Generator Tests**: Test PDF/Markdown output generation
+- **Cache Tests**: Test session persistence and recovery
+
+### Running Tests
+```bash
+# Install test dependencies
+pip install pytest pytest-mock pytest-cov
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov=generators --cov=system_tools --cov-report=html
+
+# Run specific test categories
+pytest tests/test_scraper.py
+pytest tests/test_authentication.py -v
+pytest -k "cache" -v
+
+# Run tests for specific modules
+pytest tests/test_generators.py::test_pdf_generation
+pytest tests/test_cache_manager.py::TestCacheManager::test_session_persistence
+```
+
+### Test Writing Guidelines
+- **Mock external dependencies**: Use pytest-mock for requests, WebDriver, file I/O
+- **Fixture-based setup**: Create reusable test data in conftest.py
+- **Parameterized tests**: Test multiple scenarios with @pytest.mark.parametrize
+- **Async testing**: Use pytest-asyncio for any async authentication components
+- **Error condition testing**: Test failure modes and edge cases
+
+### Common Test Patterns
+```python
+# Example test structure
+import pytest
+from unittest.mock import Mock, patch
+from src.scraper import WebScraper
+
+class TestWebScraper:
+    @pytest.fixture
+    def scraper(self):
+        return WebScraper(config={'max_pages': 10})
+    
+    @pytest.fixture
+    def mock_response(self):
+        response = Mock()
+        response.status_code = 200
+        response.text = "<html><body>Test content</body></html>"
+        return response
+    
+    def test_scraping_success(self, scraper, mock_response):
+        with patch('requests.get', return_value=mock_response):
+            result = scraper.scrape_page("https://example.com")
+            assert result is not None
+    
+    @pytest.mark.parametrize("status_code,expected", [
+        (404, None),
+        (500, None),
+        (200, "content")
+    ])
+    def test_error_handling(self, scraper, status_code, expected):
+        # Test various HTTP status codes
+        pass
+```
+
+### Authentication Testing
+- **Mock WebDriver**: Test authentication without actual browser automation
+- **Credential handling**: Test environment variable and prompt flows
+- **Session persistence**: Test cookie extraction and storage
+- **Plugin system**: Test individual authentication plugins
+
+### Cache Testing  
+- **Session lifecycle**: Test create, save, load, resume operations
+- **Data integrity**: Test compression and decompression
+- **Cleanup policies**: Test automatic cleanup based on age/count
+- **Corruption recovery**: Test handling of corrupted cache files

@@ -11,6 +11,11 @@ reportlab>=4.0.0
 tqdm>=4.65.0
 pyinstaller>=6.0.0
 
+# Testing dependencies
+pytest>=7.0.0
+pytest-mock>=3.10.0
+pytest-cov>=4.0.0
+
 # Optional JavaScript authentication dependencies
 # Install with: pip install selenium webdriver-manager
 # selenium>=4.15.0
