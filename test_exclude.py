@@ -20,7 +20,7 @@ def test_selection_logic():
     
     # This mimics the logic in preview.py line 185
     is_valid = 1 <= selected_num <= items_count
-    return is_valid
+    assert is_valid, f"Selection {selected_num} should be valid for range 1-{items_count}"
 
 # Create a mock tree structure similar to what would cause 88+ items
 def create_test_tree():
@@ -47,8 +47,8 @@ def create_test_tree():
     return tree
 
 if __name__ == '__main__':
-    result = test_selection_logic()
-    if result:
+    try:
+        test_selection_logic()
         print("✅ Selection logic works correctly")
-    else:
-        print("❌ Selection logic failed")
+    except AssertionError as e:
+        print(f"❌ Selection logic failed: {e}")

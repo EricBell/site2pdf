@@ -330,3 +330,5 @@ class TestWebScraper:
 - **Data integrity**: Test compression and decompression
 - **Cleanup policies**: Test automatic cleanup based on age/count
 - **Corruption recovery**: Test handling of corrupted cache files
+
+## Instructions to follow
