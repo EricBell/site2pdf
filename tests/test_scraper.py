@@ -78,7 +78,16 @@ class TestWebScraper:
         """Create WebScraper instance"""
         with patch('src.scraper.CacheManager'), \
              patch('src.scraper.HumanBehaviorSimulator'), \
+             patch('src.scraper.PathScopeManager') as mock_path_scope, \
              patch('src.scraper.AUTHENTICATION_AVAILABLE', True):
+            # Configure PathScopeManager mock
+            mock_path_scope_instance = Mock()
+            mock_path_scope_instance.is_url_in_scope.return_value = (True, "allowed")
+            mock_path_scope_instance.get_scope_summary.return_value = {
+                'enabled': False, 'starting_path': '/', 'allowed_paths': ['/']
+            }
+            mock_path_scope.return_value = mock_path_scope_instance
+            
             scraper = WebScraper(basic_config, verbose=True)
             scraper.human_behavior = None  # Disable human behavior for predictable tests
             return scraper
@@ -90,12 +99,24 @@ class TestWebScraper:
         mock_cache.cache_dir = temp_dir / 'cache'
         mock_cache.create_session.return_value = 'test_session_123'
         mock_cache.load_cached_pages.return_value = []
+        mock_cache.load_session.return_value = {'status': 'in_progress'}
         mock_cache.save_page = Mock()
         mock_cache.mark_session_complete = Mock()
+        mock_cache.save_discovery_results = Mock()
+        mock_cache.get_resume_urls.return_value = []
         
         with patch('src.scraper.CacheManager', return_value=mock_cache), \
              patch('src.scraper.HumanBehaviorSimulator'), \
+             patch('src.scraper.PathScopeManager') as mock_path_scope, \
              patch('src.scraper.AUTHENTICATION_AVAILABLE', True):
+            # Configure PathScopeManager mock
+            mock_path_scope_instance = Mock()
+            mock_path_scope_instance.is_url_in_scope.return_value = (True, "allowed")
+            mock_path_scope_instance.get_scope_summary.return_value = {
+                'enabled': False, 'starting_path': '/', 'allowed_paths': ['/']
+            }
+            mock_path_scope.return_value = mock_path_scope_instance
+            
             scraper = WebScraper(basic_config)
             scraper.human_behavior = None  # Disable human behavior for predictable tests
             return scraper
@@ -311,11 +332,12 @@ class TestWebScraper:
         """Test URL discovery process"""
         with patch.object(scraper, '_check_robots_txt', return_value=True), \
              patch.object(scraper, '_fetch_page', return_value=mock_response.text), \
-             patch.object(scraper, '_extract_links', return_value={'https://example.com/page1'}):
+             patch.object(scraper, '_extract_links', return_value={'https://example.com/page1'}), \
+             patch.object(scraper, '_setup_authentication'):
             
             urls, classifications = scraper.discover_urls('https://example.com')
             
-            assert 'https://example.com' in urls
+            assert 'https://example.com/' in urls  # URL gets normalized with trailing slash
             assert 'https://example.com/page1' in urls
             assert len(classifications) > 0
 
@@ -339,12 +361,13 @@ class TestWebScraper:
         
         with patch.object(scraper, '_check_robots_txt', return_value=True), \
              patch.object(scraper, '_fetch_page', return_value=mock_response.text), \
-             patch.object(scraper, '_extract_links', side_effect=mock_extract_links):
+             patch.object(scraper, '_extract_links', side_effect=mock_extract_links), \
+             patch.object(scraper, '_setup_authentication'):
             
             urls, classifications = scraper.discover_urls('https://example.com')
             
             # Should discover base URL and first level only
-            assert 'https://example.com' in urls
+            assert 'https://example.com/' in urls  # URL gets normalized with trailing slash
             assert 'https://example.com/page1' in urls
             # Second level should not be included due to depth limit
 
@@ -379,12 +402,19 @@ class TestWebScraper:
         
         mock_content = {
             'title': 'Test Page',
-            'text': 'This is test content with more than 100 characters to pass the minimum length requirement.',
+            'text': 'This is test content with more than 100 characters to pass the minimum length requirement for content processing and validation testing.',
             'links': []
         }
         
+        # Reset the cache manager to ensure clean state
+        scraper_with_cache.cache_manager.reset_mock()
+        scraper_with_cache.cache_session_id = None
+        scraper_with_cache.resume_mode = False
+        
         with patch.object(scraper_with_cache, '_fetch_page', return_value=mock_response.text), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch.object(scraper_with_cache, '_setup_authentication'), \
+             patch('time.sleep'):  # Speed up test by mocking sleep
             
             result = scraper_with_cache.scrape_approved_urls(approved_urls)
             
@@ -417,14 +447,21 @@ class TestWebScraper:
         # Mock identical content to trigger duplicate detection
         mock_content = {
             'title': 'Same Page',
-            'text': 'This is identical content that should trigger duplicate detection mechanism.',
+            'text': 'This is identical content that should trigger duplicate detection mechanism and has sufficient length to pass validation.',
             'links': []
         }
         
+        # Reset cache state
+        scraper_with_cache.cache_manager.reset_mock()
+        scraper_with_cache.cache_session_id = None
+        scraper_with_cache.resume_mode = False
+        
         with patch.object(scraper_with_cache, '_fetch_page', return_value=mock_response.text), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch.object(scraper_with_cache, '_setup_authentication'), \
+             patch('time.sleep'):  # Speed up test
             
-            with pytest.raises(RuntimeError, match="DUPLICATE CONTENT DETECTED"):
+            with pytest.raises(RuntimeError, match="Scraping terminated.*identical content"):
                 scraper_with_cache.scrape_approved_urls(approved_urls)
 
     def test_scrape_approved_urls_with_resume(self, scraper_with_cache):
@@ -433,23 +470,29 @@ class TestWebScraper:
         
         # Mock cached pages (page1 already scraped)
         cached_pages = [{'url': 'https://example.com/page1', 'title': 'Cached'}]
+        
+        # Reset and configure cache manager for resume scenario
+        scraper_with_cache.cache_manager.reset_mock()
         scraper_with_cache.cache_manager.load_cached_pages.return_value = cached_pages
         scraper_with_cache.resume_mode = True
         scraper_with_cache.cache_session_id = 'test_session_123'
         
         mock_content = {
             'title': 'Test Page 2',
-            'text': 'This is test content for page 2 with sufficient length.',
+            'text': 'This is test content for page 2 with sufficient length to pass the minimum content validation requirements.',
             'links': []
         }
         
         with patch.object(scraper_with_cache, '_fetch_page', return_value="<html>page2</html>"), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch.object(scraper_with_cache, '_setup_authentication'), \
+             patch('time.sleep'):
             
             result = scraper_with_cache.scrape_approved_urls(approved_urls)
             
-            # Should only scrape page2, as page1 was cached
-            assert len(result) == 2  # 1 cached + 1 newly scraped
+            # Should only scrape page2, as page1 was cached (returns only newly scraped)
+            assert len(result) == 1  # Only newly scraped page2
+            assert result[0]['url'] == 'https://example.com/page2'
             scraper_with_cache.cache_manager.save_page.assert_called_once()
 
     @patch('src.scraper.AuthenticationManager')
@@ -528,14 +571,16 @@ class TestWebScraper:
         """Test successful website scraping"""
         mock_content = {
             'title': 'Test Page',
-            'text': 'This is test content with sufficient length to pass the minimum requirements.',
+            'text': 'This is test content with sufficient length to pass the minimum requirements for content processing and validation testing.',
             'links': []
         }
         
         with patch.object(scraper_with_cache, '_check_robots_txt', return_value=True), \
              patch.object(scraper_with_cache, '_fetch_page', return_value=mock_response.text), \
              patch.object(scraper_with_cache, '_extract_links', return_value=set()), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch.object(scraper_with_cache, '_setup_authentication'), \
+             patch('time.sleep'):
             
             result = scraper_with_cache.scrape_website('https://example.com')
             
@@ -545,21 +590,21 @@ class TestWebScraper:
 
     def test_scrape_website_keyboard_interrupt(self, scraper_with_cache, mock_response):
         """Test scrape_website with keyboard interrupt"""
-        def mock_fetch_with_interrupt(url):
-            if 'example.com' in url:
-                return mock_response.text
-            raise KeyboardInterrupt()
+        def mock_sleep_with_interrupt(duration):
+            raise KeyboardInterrupt()  # Interrupt during sleep
         
         mock_content = {
             'title': 'Test Page',
-            'text': 'This is test content.',
+            'text': 'This is test content with sufficient length to trigger processing and pass validation requirements.',
             'links': []
         }
         
         with patch.object(scraper_with_cache, '_check_robots_txt', return_value=True), \
-             patch.object(scraper_with_cache, '_fetch_page', side_effect=mock_fetch_with_interrupt), \
-             patch.object(scraper_with_cache, '_extract_links', return_value={'https://example.com/page1'}), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache, '_fetch_page', return_value=mock_response.text), \
+             patch.object(scraper_with_cache, '_extract_links', return_value=set()), \
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch.object(scraper_with_cache, '_setup_authentication'), \
+             patch('time.sleep', side_effect=mock_sleep_with_interrupt):
             
             with pytest.raises(KeyboardInterrupt):
                 scraper_with_cache.scrape_website('https://example.com')
@@ -596,15 +641,17 @@ class TestWebScraper:
         scraper_with_cache.cache_manager.load_cached_pages.return_value = cached_pages
         scraper_with_cache.cache_manager.get_resume_urls.return_value = remaining_urls
         scraper_with_cache.cache_session_id = 'resume_session'
+        scraper_with_cache.base_domain = 'example.com'
         
         mock_content = {
             'title': 'Test Page 2',
-            'text': 'This is test content for page 2 with sufficient length.',
+            'text': 'This is test content for page 2 with sufficient length to pass the minimum content validation requirements.',
             'links': []
         }
         
         with patch.object(scraper_with_cache, '_fetch_page', return_value=mock_response.text), \
-             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content):
+             patch.object(scraper_with_cache.extractor, 'extract_content', return_value=mock_content), \
+             patch('time.sleep'):
             
             result = scraper_with_cache._resume_scraping('https://example.com')
             
@@ -618,13 +665,16 @@ class TestWebScraper:
         
         scraper_with_cache.cache_manager.load_session.return_value = session_data
         scraper_with_cache.cache_manager.load_cached_pages.return_value = cached_pages
+        scraper_with_cache.cache_manager.get_resume_urls.return_value = []
         scraper_with_cache.cache_session_id = 'no_discovery'
+        scraper_with_cache.base_domain = 'example.com'
         
-        with patch.object(scraper_with_cache, 'discover_urls', return_value=([], {})):
+        with patch.object(scraper_with_cache, 'discover_urls', return_value=([], {})) as mock_discover:
             result = scraper_with_cache._resume_scraping('https://example.com')
             
-            scraper_with_cache.discover_urls.assert_called_once()
+            mock_discover.assert_called_once()
             scraper_with_cache.cache_manager.save_discovery_results.assert_called_once()
+            scraper_with_cache.cache_manager.mark_session_complete.assert_called_once()
 
     def test_cleanup(self, scraper):
         """Test scraper cleanup"""
