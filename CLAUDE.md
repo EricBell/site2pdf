@@ -74,6 +74,11 @@ python run.py cache clean --older-than 7d
 
 # Export from cache
 python run.py cache export session_id --format markdown
+
+# Cache health diagnostics and repair
+python run.py cache doctor                    # Check cache health
+python run.py cache doctor --verbose          # Detailed diagnostics
+python run.py cache doctor --fix              # Fix detected issues
 ```
 
 ### Testing and Development
@@ -157,6 +162,14 @@ Authentication is configured in config.yaml under `authentication:` section and 
 - **cache/previews/**: Stores URL approval decisions
 - **Interactive workflow**: Save user selections for later resume
 - **Bulk operations**: Support for range selection (e.g., "1,3,5-8,12")
+
+### Cache Health Management (Cache Doctor)
+- **Health validation**: Comprehensive diagnostics for cache integrity
+- **Issue detection**: Identifies orphaned sessions, corrupted JSON, missing metadata
+- **Automatic repair**: Removes corrupted and orphaned sessions with `--fix` option
+- **Dry-run mode**: Preview fixes without making changes
+- **Detailed reporting**: Shows cache usage, session counts, and specific issues
+- **Status levels**: healthy, needs_attention, unhealthy, error
 
 ## Output Generation System
 
@@ -330,3 +343,6 @@ class TestWebScraper:
 - **Data integrity**: Test compression and decompression
 - **Cleanup policies**: Test automatic cleanup based on age/count
 - **Corruption recovery**: Test handling of corrupted cache files
+- **Cache doctor**: Test health validation, issue detection, and automatic repair
+- **Corruption scenarios**: Test orphaned sessions, invalid JSON, missing required fields
+- **Repair modes**: Test both dry-run and actual fix functionality
