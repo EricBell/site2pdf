@@ -346,3 +346,5 @@ class TestWebScraper:
 - **Cache doctor**: Test health validation, issue detection, and automatic repair
 - **Corruption scenarios**: Test orphaned sessions, invalid JSON, missing required fields
 - **Repair modes**: Test both dry-run and actual fix functionality
+
+## Instructions to follow
