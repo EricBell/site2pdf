@@ -113,14 +113,19 @@ class PathScopeManager:
         
         url_path = self._normalize_path(parsed.path)
         
-        # Check if URL path starts with any allowed path (excluding root if not exact match)
+        # Check if URL path starts with any allowed path
         for allowed_path in sorted(self.allowed_paths, key=len, reverse=True):
-            if allowed_path == '/' and url_path != '/':
-                # Special handling for homepage - only allow exact match or navigation
-                if self.config.get('allow_homepage', True) and (is_navigation or url_path == '/'):
-                    continue  # Will be handled by navigation logic below
+            # Special handling for root path '/'
+            if allowed_path == '/':
+                # If starting path is root, allow all URLs on the same domain
+                if self.starting_path == '/':
+                    return True, "Within allowed scope: / (root - all paths allowed)"
+                # If starting path is NOT root but root is allowed (via allow_homepage),
+                # only allow exact match for homepage
+                elif url_path == '/':
+                    return True, "Homepage allowed"
                 else:
-                    continue  # Skip root path for non-navigation content
+                    continue  # Skip root for non-homepage URLs when not starting from root
             elif url_path.startswith(allowed_path):
                 return True, f"Within allowed scope: {allowed_path}"
         
