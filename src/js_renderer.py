@@ -94,7 +94,7 @@ class JavaScriptRenderer:
             logger.warning("JavaScriptAuthMixin not available - basic Selenium setup")
             self.driver_manager = None
 
-    def _wait_for_page_ready(self, timeout: int = 30) -> bool:
+    def _wait_for_page_ready(self, timeout: int = None) -> bool:
         """
         Wait for page to be fully loaded and JavaScript to finish executing
 
@@ -106,6 +106,10 @@ class JavaScriptRenderer:
         """
         if not self.driver:
             return False
+
+        # Use configured timeout if not specified
+        if timeout is None:
+            timeout = self.js_config.get('timeout', 60)
 
         try:
             # Wait for document.readyState to be complete
@@ -245,25 +249,26 @@ class JavaScriptRenderer:
             # Try to recover - check if driver is still alive
             try:
                 self.driver.current_url  # Test if driver is responsive
-            except:
-                logger.error("WebDriver appears to have crashed - attempting recovery")
+                logger.warning("Driver still responsive after timeout - continuing")
+            except Exception as recovery_error:
+                logger.error(f"WebDriver crashed after timeout - attempting recovery: {recovery_error}")
                 self.stop()
                 if self.start():
-                    logger.info("WebDriver recovered successfully")
+                    logger.info("✅ WebDriver recovered successfully - ready for next page")
                 else:
-                    logger.error("Failed to recover WebDriver")
+                    logger.error("❌ Failed to recover WebDriver - JS rendering unavailable")
             return None
         except WebDriverException as e:
             logger.error(f"WebDriver error rendering {url}: {e}")
             # Check if it's a connection error (driver crashed)
             error_str = str(e).lower()
-            if "connection refused" in error_str or "cannot connect" in error_str:
+            if "connection refused" in error_str or "cannot connect" in error_str or "read timed out" in error_str:
                 logger.error("WebDriver connection lost - attempting recovery")
                 self.stop()
                 if self.start():
-                    logger.info("WebDriver recovered successfully")
+                    logger.info("✅ WebDriver recovered successfully - ready for next page")
                 else:
-                    logger.error("Failed to recover WebDriver")
+                    logger.error("❌ Failed to recover WebDriver - JS rendering unavailable")
             return None
         except Exception as e:
             logger.error(f"Unexpected error rendering {url}: {e}")
