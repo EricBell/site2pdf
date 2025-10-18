@@ -1,5 +1,7 @@
 # Website Scraping to PDF Application - Requirements
 
+> **📜 Historical Document**: This file represents the original project requirements and specifications from the initial planning phase. For current features, usage instructions, and comprehensive documentation, please refer to [README.md](../README.md) in the root directory. This document is maintained for reference, development planning, and tracking how the project has evolved beyond its original scope.
+
 ## Project Overview
 Create a Python CLI application that scrapes a website and all its subpages, then generates a single PDF document containing all the content with embedded images. The application also includes comprehensive todo management for project organization and tracking.
 
