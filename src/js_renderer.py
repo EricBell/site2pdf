@@ -242,9 +242,28 @@ class JavaScriptRenderer:
 
         except TimeoutException as e:
             logger.error(f"Timeout rendering page {url}: {e}")
+            # Try to recover - check if driver is still alive
+            try:
+                self.driver.current_url  # Test if driver is responsive
+            except:
+                logger.error("WebDriver appears to have crashed - attempting recovery")
+                self.stop()
+                if self.start():
+                    logger.info("WebDriver recovered successfully")
+                else:
+                    logger.error("Failed to recover WebDriver")
             return None
         except WebDriverException as e:
             logger.error(f"WebDriver error rendering {url}: {e}")
+            # Check if it's a connection error (driver crashed)
+            error_str = str(e).lower()
+            if "connection refused" in error_str or "cannot connect" in error_str:
+                logger.error("WebDriver connection lost - attempting recovery")
+                self.stop()
+                if self.start():
+                    logger.info("WebDriver recovered successfully")
+                else:
+                    logger.error("Failed to recover WebDriver")
             return None
         except Exception as e:
             logger.error(f"Unexpected error rendering {url}: {e}")

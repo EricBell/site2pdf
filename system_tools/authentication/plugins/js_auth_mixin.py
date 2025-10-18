@@ -302,7 +302,7 @@ class JavaScriptAuthMixin:
         options.add_argument('--disable-backgrounding-occluded-windows')
         options.add_argument('--disable-renderer-backgrounding')
         options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
-        
+
         # Additional stability options
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_argument('--disable-extensions')
@@ -318,8 +318,8 @@ class JavaScriptAuthMixin:
         options.add_argument('--no-first-run')
         options.add_argument('--no-service-autorun')
         options.add_argument('--password-store=basic')
-        options.add_argument('--single-process')  # Can help with WSL stability
-        options.add_argument('--disable-zygote')  # Reduces process complexity
+        # REMOVED: --single-process and --disable-zygote (cause crashes with JS-heavy sites)
+        # These options help with auth but break content rendering
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_experimental_option("detach", True)

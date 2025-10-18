@@ -122,11 +122,11 @@ javascript:
   # Example: python run.py scrape https://example.com --js-render
   enabled_for_content: false        # Enable browser automation for content rendering
   headless: true                    # Run browser in headless mode (no GUI)
-  timeout: 30                       # Page load timeout in seconds
+  timeout: 60                       # Page load timeout in seconds (increased for JS-heavy sites)
   implicit_wait: 10                 # Wait time for elements to appear
   browser: auto                     # auto (detect), chrome, or firefox
   window_size: [1920, 1080]        # Browser window size
-  additional_wait: 2                # Extra seconds to wait after page load for dynamic content
+  additional_wait: 3                # Extra seconds to wait after page load for dynamic content
   handle_infinite_scroll: false     # Detect and handle infinite scroll pages
   max_scroll_attempts: 5            # Maximum scrolls for infinite scroll detection
   debug_screenshots: false          # Save debug screenshots during rendering

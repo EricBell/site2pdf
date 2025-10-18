@@ -335,9 +335,13 @@ class ContentExtractor:
         for list_elem in soup.find_all(['ul', 'ol']):
             if self._is_likely_menu(list_elem):
                 list_elem.decompose()
-                
+
         # Find div/section elements that might be menus
+        # Note: Some elements may have been decomposed already, so check if still in tree
         for container in soup.find_all(['div', 'section']):
+            # Skip if element was already removed (parent is None)
+            if container.parent is None:
+                continue
             if self._is_likely_menu_container(container):
                 container.decompose()
                 
