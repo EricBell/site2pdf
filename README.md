@@ -51,8 +51,9 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 🔍 **Full-Text Search**: Search across descriptions, categories, and notes
 - 📈 **Statistics Dashboard**: Track progress and completion rates
 
-### 🔐 **Authentication System**
-- 🎯 **Universal Login Support**: Automatically detects and handles common login forms
+### 🔐 **Authentication System (Opt-In)**
+- 🌐 **Public-First Approach**: Works with public pages by default - authentication is optional
+- 🎯 **Universal Login Support**: Automatically detects and handles common login forms when enabled
 - 🔌 **Plugin Architecture**: Site-specific authentication for complex flows
 - 💾 **Session Persistence**: Caches login sessions to avoid repeated authentication
 - 🛡️ **Secure Credential Management**: Environment variables, prompts, multiple sources
@@ -60,6 +61,7 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 🔄 **Multi-Step Flows**: Handles username-first then password login patterns
 - 📊 **Session Validation**: Automatic session health checks and renewal
 - 🏢 **Enterprise Ready**: Works with corporate SSO, Confluence, Jira, GitHub, and more
+- 💡 **Enable via CLI**: Use `--username`, `--password`, or `--auth` flags to activate authentication
 
 ## Quick Start
 
@@ -211,13 +213,18 @@ dist\site2pdf.exe [options] <url>
 
 #### Website Scraping
 
+**Default Behavior**: The scraper works with **public pages** by default. Authentication is **opt-in** - only activated when you provide authentication flags (`--username`, `--password`, or `--auth`).
+
 **With Python:**
 ```bash
-# Scrape a website and generate PDF (default)
+# Scrape a website and generate PDF (default - public pages only)
 python run.py scrape https://example.com
 
-# Generate markdown instead of PDF
+# Generate markdown instead of PDF (public pages)
 python run.py scrape https://example.com --format markdown
+
+# Scrape with authentication (opt-in - for protected content)
+python run.py scrape https://protected-site.com --username user --password pass
 ```
 
 **With Executable:**
@@ -244,7 +251,10 @@ python run.py scrape https://example.com --include-menus
 # Dry run to see what would be scraped
 python run.py scrape https://example.com --dry-run
 
-# Authentication examples
+# Public scraping (default - no authentication)
+python run.py scrape https://example.com
+
+# Authenticated scraping (opt-in with flags)
 python run.py scrape https://protected-site.com --username myuser --password mypass
 python run.py scrape https://protected-site.com --auth  # Uses environment variables
 ```
@@ -378,7 +388,9 @@ chunking:
     pdf_overhead: 2.5        # Size estimation multiplier for PDF
 
 authentication:
-  enabled: false             # Enable authentication system
+  # Authentication is DISABLED by default - use CLI flags to enable
+  # Example: python run.py scrape https://example.com --username user --password pass
+  enabled: false             # Default: authentication disabled (opt-in via CLI)
   cache_sessions: true       # Cache login sessions to avoid re-authentication
   session_duration: "24h"    # How long cached sessions remain valid
   sites:                     # Site-specific authentication configuration
@@ -493,7 +505,15 @@ python run.py scrape https://example.com --verbose --delay 3 --format markdown
 ```
 
 #### Authentication Examples
+
+**Important**: Authentication is **opt-in** and only activates when you provide authentication flags. By default, the scraper works with public pages without attempting to log in.
+
 ```bash
+# DEFAULT BEHAVIOR - Scrape public pages WITHOUT authentication
+python run.py scrape https://example.com
+python run.py scrape https://docs.example.com
+
+# AUTHENTICATED SCRAPING - Use flags to enable authentication
 # Basic authentication with username and password
 python run.py scrape https://protected-site.com --username myuser --password mypass
 
@@ -509,9 +529,18 @@ python run.py scrape https://protected-site.com --auth --format markdown --outpu
 # Authentication with preview mode
 python run.py scrape https://protected-site.com --username user --preview
 
+# Email OTP authentication (for sites using email verification)
+python run.py scrape https://protected-site.com --auth email_otp --username user@example.com
+
 # Check version
 python run.py scrape --version
 ```
+
+**When to Use Authentication:**
+- ✅ Site requires login to access content
+- ✅ You want to scrape protected/private documentation
+- ✅ Content is behind a paywall or member area
+- ❌ Don't use for public documentation sites (default behavior is faster)
 
 #### Menu Exclusion Examples
 ```bash

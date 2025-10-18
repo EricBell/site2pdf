@@ -117,13 +117,16 @@ pdf:
   output_filename: scraped_website.pdf
   page_size: A4
 authentication:
-  enabled: true                     # Enable authentication system
-  cache_sessions: true              # Cache login sessions to avoid re-authentication  
+  # Authentication is DISABLED by default - the scraper works with public pages
+  # To enable authentication, use CLI flags: --username, --password, or --auth
+  # Example: python run.py scrape https://example.com --username myuser --password mypass
+  enabled: false                    # Disable authentication by default (opt-in via CLI)
+  cache_sessions: true              # Cache login sessions to avoid re-authentication
   session_duration: "24h"           # How long cached sessions remain valid
   debug_screenshots: true           # Enable debug screenshots during authentication
   method_priority:                  # Authentication method priority order
     - "direct_api"                  # Try direct API calls first (better for automation)
-    - "javascript"                  # Then try browser automation 
+    - "javascript"                  # Then try browser automation
     - "manual"                      # Finally fall back to manual intervention
   sites:                            # Site-specific authentication configuration
     # ideabrowser.com - use direct API method first since browser automation has issues
