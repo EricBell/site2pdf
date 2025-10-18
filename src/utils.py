@@ -195,7 +195,7 @@ def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
     # File handler
     if logging_config.get('log_to_file', True):
         log_filename = os.path.join(logs_dir, logging_config.get('log_filename', 'scraper.log'))
-        
+
         # Truncate log file on startup for fresh logs each run
         try:
             if os.path.exists(log_filename):
@@ -204,7 +204,7 @@ def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
                 print(f"Truncated existing log file: {log_filename}")
         except Exception as e:
             print(f"Warning: Could not truncate log file {log_filename}: {e}")
-        
+
         if logging_config.get('rotate_logs', True):
             # Rotating file handler - now starts with empty file
             file_handler = logging.handlers.RotatingFileHandler(
@@ -217,11 +217,16 @@ def setup_logging(logging_config: Dict[str, Any]) -> logging.Logger:
         else:
             # Regular file handler - starts with empty file
             file_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
-            
-        file_handler.setLevel(logging.DEBUG)  # File gets all logs
+
+        # File handler respects configured log level (not always DEBUG)
+        file_handler.setLevel(getattr(logging, logging_config.get('level', 'INFO').upper()))
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
-    
+
+    # Suppress verbose urllib3 logs for cleaner output
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+
     return logger
 
 

@@ -52,7 +52,14 @@ class WebScraper:
         self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
         self.exclude_patterns = exclude_patterns or []
         self.path_scope: Optional[PathScopeManager] = None  # Initialized when we know the starting URL
-        
+
+        # URL validation cache for performance
+        self._url_validation_cache: Dict[str, Tuple[bool, str]] = {}
+
+        # Compile regex patterns once for performance
+        self._compiled_exclude_patterns = [re.compile(pattern) for pattern in self.config['filters']['exclude_patterns']]
+        self._compiled_cli_patterns = [re.compile(pattern) for pattern in self.exclude_patterns]
+
         # Authentication support
         self.auth_enabled = config.get('authentication', {}).get('enabled', False) or (auth_username and auth_password) or auth_type
         self.auth_manager: Optional[AuthenticationManager] = None
@@ -114,41 +121,57 @@ class WebScraper:
         return normalized
 
     def _is_valid_url(self, url: str, is_navigation: bool = False, current_depth: int = 0) -> bool:
-        """Check if URL should be crawled based on filters."""
+        """Check if URL should be crawled based on filters with caching for performance."""
+        # Check cache first (massive performance improvement)
+        cache_key = f"{url}:{is_navigation}:{current_depth}"
+        if cache_key in self._url_validation_cache:
+            return self._url_validation_cache[cache_key][0]
+
         # Check URL length
         if len(url) > self.config['filters']['max_url_length']:
+            self._url_validation_cache[cache_key] = (False, "URL too long")
             return False
-            
-        # Check excluded patterns from config
-        for pattern in self.config['filters']['exclude_patterns']:
+
+        # Check excluded patterns from config (using pre-compiled patterns)
+        for i, compiled_pattern in enumerate(self._compiled_exclude_patterns):
+            pattern_str = self.config['filters']['exclude_patterns'][i]
             # Skip login exclusion patterns when authentication is enabled
-            if self.auth_enabled and pattern in ['/login.*', r'/login.*', '/logout.*', r'/logout.*']:
+            if self.auth_enabled and pattern_str in ['/login.*', r'/login.*', '/logout.*', r'/logout.*']:
                 continue
-            if re.search(pattern, url):
-                self.logger.debug(f"URL excluded by config pattern {pattern}: {url}")
+            if compiled_pattern.search(url):
+                reason = f"URL excluded by config pattern {pattern_str}: {url}"
+                self.logger.debug(reason)
+                self._url_validation_cache[cache_key] = (False, reason)
                 return False
-        
-        # Check CLI exclude patterns
-        for pattern in self.exclude_patterns:
-            if re.search(pattern, url):
-                self.logger.debug(f"URL excluded by CLI pattern {pattern}: {url}")
+
+        # Check CLI exclude patterns (using pre-compiled patterns)
+        for i, compiled_pattern in enumerate(self._compiled_cli_patterns):
+            if compiled_pattern.search(url):
+                reason = f"URL excluded by CLI pattern {self.exclude_patterns[i]}: {url}"
+                self.logger.debug(reason)
+                self._url_validation_cache[cache_key] = (False, reason)
                 return False
-                
+
         # Check file extensions
         parsed = urlparse(url)
         path = parsed.path.lower()
         for ext in self.config['filters']['skip_extensions']:
             if path.endswith(f'.{ext}'):
-                self.logger.debug(f"URL excluded by extension .{ext}: {url}")
+                reason = f"URL excluded by extension .{ext}: {url}"
+                self.logger.debug(reason)
+                self._url_validation_cache[cache_key] = (False, reason)
                 return False
-        
+
         # Check path scoping
         if self.path_scope:
             allowed, reason = self.path_scope.is_url_in_scope(url, is_navigation, current_depth)
             if not allowed:
                 self.logger.debug(f"URL excluded by path scoping: {url} - {reason}")
+                self._url_validation_cache[cache_key] = (False, reason)
                 return False
-                
+
+        # Cache positive result
+        self._url_validation_cache[cache_key] = (True, "Valid")
         return True
 
     def _is_same_domain(self, url: str) -> bool:
