@@ -111,13 +111,16 @@ except ImportError:
               help='Username for authentication')
 @click.option('--password', 
               help='Password for authentication (will prompt if not provided)')
-@click.option('--auth', 
+@click.option('--auth',
               type=click.Choice(['form', 'email_otp'], case_sensitive=False),
               help='Authentication type: form (default form login), email_otp (email verification code)')
-def scrape(base_url: str, 
+@click.option('--js-render', '--use-browser',
+              is_flag=True,
+              help='Use headless browser to render JavaScript-heavy pages (requires Selenium)')
+def scrape(base_url: str,
            output: Optional[str],
            max_depth: Optional[int],
-           max_pages: Optional[int], 
+           max_pages: Optional[int],
            delay: Optional[float],
            config: Optional[str],
            verbose: bool,
@@ -137,7 +140,8 @@ def scrape(base_url: str,
            remove_images: bool,
            username: Optional[str],
            password: Optional[str],
-           auth: Optional[str]):
+           auth: Optional[str],
+           js_render: bool):
     """
     Scrape a website and generate output document.
     
@@ -199,7 +203,15 @@ def scrape(base_url: str,
                     auth_password = password
         if remove_images:
             app_config['content']['remove_images'] = True
-            
+
+        # Enable JavaScript rendering if requested
+        if js_render:
+            if 'javascript' not in app_config:
+                app_config['javascript'] = {}
+            app_config['javascript']['enabled_for_content'] = True
+            if verbose:
+                click.echo("🌐 JavaScript rendering enabled (using Selenium)")
+
         # Setup logging
         logger = setup_logging(app_config['logging'])
         

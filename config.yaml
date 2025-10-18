@@ -116,6 +116,21 @@ pdf:
     top: 20
   output_filename: scraped_website.pdf
   page_size: A4
+javascript:
+  # JavaScript rendering is DISABLED by default - use --js-render flag to enable
+  # Requires Selenium and WebDriver (pip install selenium webdriver-manager)
+  # Example: python run.py scrape https://example.com --js-render
+  enabled_for_content: false        # Enable browser automation for content rendering
+  headless: true                    # Run browser in headless mode (no GUI)
+  timeout: 30                       # Page load timeout in seconds
+  implicit_wait: 10                 # Wait time for elements to appear
+  browser: auto                     # auto (detect), chrome, or firefox
+  window_size: [1920, 1080]        # Browser window size
+  additional_wait: 2                # Extra seconds to wait after page load for dynamic content
+  handle_infinite_scroll: false     # Detect and handle infinite scroll pages
+  max_scroll_attempts: 5            # Maximum scrolls for infinite scroll detection
+  debug_screenshots: false          # Save debug screenshots during rendering
+
 authentication:
   # Authentication is DISABLED by default - the scraper works with public pages
   # To enable authentication, use CLI flags: --username, --password, or --auth

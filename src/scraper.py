@@ -15,6 +15,7 @@ try:
     from .human_behavior import HumanBehaviorSimulator
     from .path_scoping import PathScopeManager
     from .cache_manager import CacheManager
+    from .js_renderer import JavaScriptRenderer
 except ImportError:
     from extractor import ContentExtractor
     from content_classifier import ContentClassifier, ContentType
@@ -22,6 +23,7 @@ except ImportError:
     from human_behavior import HumanBehaviorSimulator
     from path_scoping import PathScopeManager
     from cache_manager import CacheManager
+    from js_renderer import JavaScriptRenderer
 
 # Authentication system import
 try:
@@ -46,7 +48,24 @@ class WebScraper:
         self.url_classifications: Dict[str, ContentType] = {}
         self.base_domain = ""
         self.logger = logging.getLogger(__name__)
-        self.extractor = ContentExtractor(config)
+
+        # Initialize JavaScript renderer if enabled
+        self.js_renderer = None
+        if config.get('javascript', {}).get('enabled_for_content', False):
+            self.logger.info("JavaScript rendering enabled - initializing renderer...")
+            self.js_renderer = JavaScriptRenderer(config)
+            if self.js_renderer.is_enabled():
+                # Start the browser once at initialization
+                if self.js_renderer.start():
+                    self.logger.info("✅ JavaScript renderer ready")
+                else:
+                    self.logger.warning("Failed to start JavaScript renderer, falling back to static HTML")
+                    self.js_renderer = None
+            else:
+                self.logger.warning("JavaScript renderer not available")
+                self.js_renderer = None
+
+        self.extractor = ContentExtractor(config, js_renderer=self.js_renderer)
         self.classifier = ContentClassifier()
         self.progress = ProgressTracker(verbose=verbose)
         self.human_behavior = HumanBehaviorSimulator(config) if not dry_run else None
@@ -786,3 +805,6 @@ class WebScraper:
         self.progress.cleanup()
         if hasattr(self.session, 'close'):
             self.session.close()
+        # Stop JavaScript renderer if it was initialized
+        if self.js_renderer:
+            self.js_renderer.stop()

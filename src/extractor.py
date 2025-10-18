@@ -10,12 +10,13 @@ import hashlib
 
 
 class ContentExtractor:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], js_renderer=None):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.session = requests.Session()
         self.downloaded_images: Set[str] = set()
-        
+        self.js_renderer = js_renderer  # Optional JavaScript renderer
+
         # Configure session for image downloads
         self.session.headers.update({
             'User-Agent': config['http']['user_agent']
@@ -490,9 +491,52 @@ class ContentExtractor:
         
         return str(soup)
 
-    def extract_content(self, html: str, url: str) -> Optional[Dict[str, Any]]:
-        """Extract all content from HTML page."""
+    def _render_with_js(self, url: str) -> Optional[str]:
+        """
+        Render page with JavaScript if renderer is available.
+
+        Args:
+            url: URL to render
+
+        Returns:
+            Rendered HTML or None if rendering failed
+        """
+        if not self.js_renderer:
+            return None
+
+        if not self.js_renderer.is_enabled():
+            self.logger.debug("JavaScript renderer not enabled")
+            return None
+
         try:
+            rendered_html = self.js_renderer.render_page(url)
+            return rendered_html
+        except Exception as e:
+            self.logger.error(f"JavaScript rendering failed for {url}: {e}")
+            return None
+
+    def extract_content(self, html: str, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Extract all content from HTML page.
+
+        Args:
+            html: Raw HTML content (will be replaced by JS-rendered HTML if renderer is enabled)
+            url: URL of the page
+
+        Returns:
+            Extracted content dictionary or None if extraction failed
+        """
+        try:
+            # Try JavaScript rendering first if enabled
+            if self.js_renderer and self.js_renderer.is_enabled():
+                self.logger.info(f"Using JavaScript renderer for: {url}")
+                rendered_html = self._render_with_js(url)
+                if rendered_html:
+                    html = rendered_html
+                    self.logger.info("JavaScript rendering successful")
+                else:
+                    self.logger.warning("JavaScript rendering failed, falling back to static HTML")
+
             soup = BeautifulSoup(html, 'html.parser')
             
             # Remove unwanted elements

@@ -26,6 +26,14 @@ A powerful Python CLI application that intelligently scrapes websites, generates
 - 📁 **Multi-File Support**: Single document or individual files per page
 - 🧩 **Smart Chunking**: Split large outputs into manageable chunks by size or page count
 
+### 🌐 **JavaScript Rendering (Opt-In)**
+- 🚀 **Headless Browser**: Renders JavaScript-heavy sites using Selenium WebDriver
+- ⚡ **WSL Optimized**: Auto-configured for WSL/Linux environments with Chrome/Firefox support
+- 🎯 **Smart Detection**: Automatic browser detection with Firefox→Chrome fallback
+- ⏱️ **Configurable Timeouts**: Adjustable wait times for dynamic content loading
+- 📜 **Infinite Scroll**: Optional handling of infinite scroll patterns
+- 🔧 **Enable via CLI**: Use `--js-render` or `--use-browser` flag to activate
+
 ### 🔧 **Powerful Configuration**
 - 🎮 **Interactive Preview**: Tree-view URL selection with approval system
 - 💾 **URL List Persistence**: Save and reuse approved URL lists
@@ -304,6 +312,7 @@ python run.py todo stats
 - `--username`: Username for authentication
 - `--password`: Password for authentication (will prompt if username provided but password missing)
 - `--auth`: Enable authentication using environment variables
+- `--js-render`, `--use-browser`: Enable JavaScript rendering for JS-heavy sites (requires Selenium)
 - `--version`: Show the version and exit
 
 #### Todo Management Commands (`python run.py todo <command>`)
@@ -386,6 +395,20 @@ chunking:
   size_estimation:
     markdown_overhead: 1.2   # Size estimation multiplier for Markdown
     pdf_overhead: 2.5        # Size estimation multiplier for PDF
+
+javascript:
+  # JavaScript rendering is DISABLED by default - use --js-render flag to enable
+  # Requires Selenium and WebDriver: pip install selenium webdriver-manager
+  # Example: python run.py scrape https://react-site.com --js-render
+  enabled_for_content: false  # Enable browser automation for content rendering
+  headless: true              # Run browser in headless mode (no GUI)
+  timeout: 30                 # Page load timeout in seconds
+  implicit_wait: 10           # Wait time for elements to appear
+  browser: auto               # auto (detect), chrome, or firefox
+  window_size: [1920, 1080]  # Browser window size
+  additional_wait: 2          # Extra seconds to wait after page load for dynamic content
+  handle_infinite_scroll: false # Detect and handle infinite scroll pages
+  max_scroll_attempts: 5      # Maximum scrolls for infinite scroll detection
 
 authentication:
   # Authentication is DISABLED by default - use CLI flags to enable
@@ -541,6 +564,47 @@ python run.py scrape --version
 - ✅ You want to scrape protected/private documentation
 - ✅ Content is behind a paywall or member area
 - ❌ Don't use for public documentation sites (default behavior is faster)
+
+#### JavaScript Rendering Examples
+
+**Important**: JavaScript rendering is **opt-in** and only activates when you provide the `--js-render` flag. By default, the scraper uses static HTML fetching which is faster and more efficient.
+
+```bash
+# DEFAULT BEHAVIOR - Static HTML fetching (fast, efficient)
+python run.py scrape https://docs.example.com
+python run.py scrape https://example.com --format markdown
+
+# JAVASCRIPT RENDERING - Use for JS-heavy sites (React, Vue, Angular, etc.)
+# Enable browser automation to render JavaScript before extracting content
+python run.py scrape https://react.dev/ --js-render --format markdown
+python run.py scrape https://minesweeper.online/ --js-render --preview
+python run.py scrape https://angular.io/docs --js-render --output angular-docs.pdf
+
+# Combine with other features
+python run.py scrape https://js-heavy-site.com --js-render --remove-images --chunk-size 5MB
+python run.py scrape https://spa-app.com --js-render --preview --format md
+
+# Works with authentication too
+python run.py scrape https://protected-spa.com --js-render --username user --password pass
+```
+
+**When to Use JavaScript Rendering:**
+- ✅ Site built with React, Vue, Angular, or other JS frameworks
+- ✅ Content appears as "Loading..." or empty when fetched normally
+- ✅ Page is a Single Page Application (SPA)
+- ✅ Dynamic content loaded via JavaScript/AJAX
+- ❌ Don't use for static HTML sites (default behavior is 3-10x faster)
+
+**Browser Requirements:**
+- Requires Selenium and webdriver-manager: `pip install selenium webdriver-manager`
+- Chrome or Firefox browser installed on your system
+- Auto-configures for WSL/Linux/Windows environments
+
+**Performance Notes:**
+- JavaScript rendering is slower than static HTML fetching
+- Each page takes 2-8 seconds to render (vs <1 second for static)
+- Use only when necessary for JavaScript-heavy sites
+- Timeout can be adjusted in config.yaml (`javascript.timeout: 60`)
 
 #### Menu Exclusion Examples
 ```bash
