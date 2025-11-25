@@ -1,0 +1,84 @@
+[project]
+name = "site2pdf"
+version = "0.1.0"
+description = "A sophisticated web scraping and document generation tool that converts websites into professional PDF and Markdown documents"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = [
+    "web-scraping",
+    "pdf-generation",
+    "markdown",
+    "documentation",
+    "crawler",
+    "weasyprint",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Text Processing :: Markup :: HTML",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "click>=8.1.0",
+    "weasyprint>=60.0",
+    "python-dotenv>=1.0.0",
+    "PyYAML>=6.0",
+    "urllib3>=2.0.0",
+    "lxml>=4.9.0",
+    "Pillow>=10.0.0",
+    "reportlab>=4.0.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.0.0",
+    "pyinstaller>=6.0.0",
+]
+auth = [
+    "selenium>=4.15.0",
+    "webdriver-manager>=4.0.0",
+]
+
+[project.scripts]
+site2pdf = "cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "generators", "system_tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --cov=src --cov=generators --cov=system_tools"
+
+[tool.coverage.run]
+source = ["src", "generators", "system_tools"]
+omit = ["*/tests/*", "*/__pycache__/*", "*/venv/*", "*/.venv/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

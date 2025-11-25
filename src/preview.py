@@ -180,9 +180,9 @@ class URLPreview:
         - "1 3 5" -> [1, 3, 5]
         """
         numbers = []
-        
+
         # Support both comma and space separation
-        parts = re.split('[,\s]+', selection_str.strip())
+        parts = re.split(r'[,\s]+', selection_str.strip())
         
         for part in parts:
             part = part.strip()

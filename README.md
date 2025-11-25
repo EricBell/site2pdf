@@ -175,15 +175,56 @@ git clone <repository-url>
 cd site2pdf
 ```
 
-2. Create a virtual environment:
+2. **Install system dependencies** (required for PDF generation):
+
+**Ubuntu/Debian/WSL:**
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info
+```
+
+**Note:** On older Ubuntu/Debian versions, use `libgdk-pixbuf2.0-0` instead of `libgdk-pixbuf-2.0-0`.
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install -y \
+    pango \
+    gdk-pixbuf2 \
+    libffi-devel
+```
+
+**macOS:**
+```bash
+brew install pango gdk-pixbuf libffi
+```
+
+3. Create a virtual environment and install Python dependencies:
+
+**Using pip (traditional):**
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-3. Install dependencies:
+**Using uv (faster, recommended):**
 ```bash
-pip install -r requirements.txt
+# Install uv if not already installed
+pip install uv
+
+# Install dependencies (uv automatically manages virtual environment)
+uv sync
+
+# Optional: Install development dependencies
+uv sync --extra dev
+
+# Optional: Install authentication dependencies (Selenium)
+uv sync --extra auth
 ```
 
 ### Option 2: Standalone Executable (No Python Required)
@@ -219,11 +260,29 @@ dist\site2pdf.exe [options] <url>
 
 ### Basic Usage
 
+**Running with uv (Recommended):**
+
+If you installed using `uv`, prefix all commands with `uv run`:
+
+```bash
+uv run python run.py scrape https://example.com
+```
+
+**Running with traditional Python:**
+
+If you activated a virtual environment manually, you can run directly:
+
+```bash
+python run.py scrape https://example.com
+```
+
+All examples below show the direct `python run.py` syntax. When using uv, just add `uv run` before each command.
+
 #### Website Scraping
 
 **Default Behavior**: The scraper works with **public pages** by default. Authentication is **opt-in** - only activated when you provide authentication flags (`--username`, `--password`, or `--auth`).
 
-**With Python:**
+**Basic Commands:**
 ```bash
 # Scrape a website and generate PDF (default - public pages only)
 python run.py scrape https://example.com
@@ -1117,18 +1176,160 @@ python run.py todo stats
 
 ### Common Issues
 
-1. **Permission Errors**: Ensure output directories are writable
-2. **Network Timeouts**: Increase timeout in config.yaml
-3. **Memory Issues**: Reduce max_pages for large sites
-4. **PDF Generation Fails**: Check WeasyPrint dependencies
+#### 1. WeasyPrint Import Error: "cannot load library 'libpango-1.0-0'"
+
+**Symptoms:**
+```
+OSError: cannot load library 'libpango-1.0-0': libpango-1.0-0: cannot open shared object file: No such file or directory
+```
+
+**Solution:**
+
+Install the required system libraries. The package names differ between Debian/Ubuntu versions:
+
+**Debian Trixie / Ubuntu 24.04+:**
+```bash
+sudo apt-get install -y \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info
+```
+
+**Older Ubuntu/Debian versions:**
+```bash
+sudo apt-get install -y \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libffi-dev \
+    shared-mime-info
+```
+
+**Verify installation:**
+```bash
+ldconfig -p | grep pango
+# Should show: libpangocairo-1.0.so.0 and libpango-1.0.so.0
+```
+
+#### 2. Disk Space Error: "No space left on device"
+
+**Symptoms:**
+```
+E: Write error - write (28: No space left on device)
+```
+
+**Solution:**
+
+Check disk space and clean temporary files:
+
+```bash
+# Check disk usage
+df -h
+
+# If /tmp is full, clean it
+sudo rm -rf /tmp/tmp.*
+
+# Clean apt cache
+sudo apt-get clean
+sudo rm -rf /var/lib/apt/lists/*
+
+# Recreate apt lists directory
+sudo mkdir -p /var/lib/apt/lists/partial
+sudo apt-get update
+```
+
+#### 3. Package Not Found: "libgdk-pixbuf2.0-0 has no installation candidate"
+
+**Symptoms:**
+```
+E: Package 'libgdk-pixbuf2.0-0' has no installation candidate
+```
+
+**Solution:**
+
+Debian Trixie uses a different package name. Use `libgdk-pixbuf-2.0-0` instead:
+
+```bash
+sudo apt-get install libgdk-pixbuf-2.0-0
+```
+
+#### 4. Import Error: "attempted relative import with no known parent package"
+
+**Symptoms:**
+```
+ImportError: attempted relative import with no known parent package
+```
+
+**Solution:**
+
+This means dependencies are not installed. Run:
+
+```bash
+# With uv (recommended)
+uv sync
+
+# Or with pip
+pip install -r requirements.txt
+```
+
+#### 5. Selenium Warning: "JavaScript rendering disabled"
+
+**Symptoms:**
+```
+Selenium not available - JavaScript rendering disabled
+```
+
+**Solution:**
+
+This is **not an error** - it's just a warning. JavaScript rendering is optional and only needed for:
+- JavaScript-heavy SPAs
+- Sites requiring browser authentication
+
+To enable it:
+```bash
+uv sync --extra auth
+# Or: pip install selenium webdriver-manager
+```
+
+#### 6. Permission Errors
+
+Ensure output directories are writable:
+```bash
+chmod -R u+w /path/to/output
+```
+
+#### 7. Network Timeouts
+
+Increase timeout in config.yaml:
+```yaml
+request_delay: 3.0  # seconds between requests
+```
+
+#### 8. Memory Issues
+
+Reduce max_pages for large sites:
+```bash
+python run.py scrape https://example.com --max-pages 50
+```
 
 ### Debugging
 
 Enable verbose mode and check logs:
 ```bash
-python run.py https://example.com --verbose
+python run.py scrape https://example.com --verbose
 cat logs/scraper.log
 ```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check the logs**: `logs/scraper.log` contains detailed error information
+2. **Review configuration**: Verify `config.yaml` settings
+3. **Check system requirements**: Ensure all system libraries are installed
+4. **Test with verbose mode**: Run with `--verbose` flag for detailed output
 
 ## Dependencies
 

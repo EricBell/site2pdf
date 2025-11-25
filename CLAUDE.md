@@ -6,6 +6,65 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 site2pdf is a sophisticated web scraping and document generation tool that converts websites into professional PDF and Markdown documents. It features intelligent content classification, human-like browsing behavior, modular authentication, and comprehensive caching systems.
 
+## System Requirements
+
+### Python Dependencies
+
+Managed via `pyproject.toml` and `requirements.txt`:
+- **Core**: requests, beautifulsoup4, click, PyYAML, python-dotenv, tqdm
+- **PDF Generation**: weasyprint, Pillow, reportlab
+- **Parsing**: lxml, urllib3
+
+**Python Version:** Requires Python 3.8 or higher
+
+### System Libraries (Required for PDF Generation)
+
+WeasyPrint requires native system libraries. Package names vary by OS:
+
+**Debian Trixie / Ubuntu 24.04+ / WSL2:**
+```bash
+sudo apt-get install -y \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info
+```
+
+**Older Ubuntu/Debian (pre-24.04):**
+```bash
+sudo apt-get install -y \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf2.0-0 \  # Note: different package name
+    libffi-dev \
+    shared-mime-info
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install -y pango gdk-pixbuf2 libffi-devel
+```
+
+**macOS:**
+```bash
+brew install pango gdk-pixbuf libffi
+```
+
+### Optional Dependencies
+
+**JavaScript Rendering (Selenium):**
+```bash
+uv sync --extra auth
+# Or: pip install selenium webdriver-manager
+```
+
+**Development Tools:**
+```bash
+uv sync --extra dev
+# Or: pip install pytest pytest-mock pytest-cov pyinstaller
+```
+
 ## Core Architecture
 
 ### Entry Point and CLI
@@ -34,10 +93,46 @@ site2pdf is a sophisticated web scraping and document generation tool that conve
 
 ## Key Development Commands
 
+### Package Management
+
+The project supports both **uv** (recommended) and **pip** for dependency management.
+
+**Using uv (Recommended - Faster):**
+```bash
+# Install dependencies
+uv sync
+
+# Install with optional extras
+uv sync --extra dev      # Development tools (pytest, coverage)
+uv sync --extra auth     # Authentication support (Selenium)
+
+# Run application
+uv run python run.py scrape https://example.com
+
+# Run tests
+uv run pytest
+
+# All commands can be prefixed with 'uv run'
+```
+
+**Using pip (Traditional):**
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run application (venv must be activated)
+python run.py scrape https://example.com
+```
+
 ### Running the Application
 ```bash
 # Basic scraping
 python run.py scrape https://example.com
+# Or with uv: uv run python run.py scrape https://example.com
 
 # With format options
 python run.py scrape https://example.com --format markdown --output docs.md
@@ -51,6 +146,8 @@ python run.py scrape https://example.com --preview
 # Resume from cache
 python run.py scrape https://example.com --resume session_id
 ```
+
+**Note:** All examples use `python run.py` syntax. When using uv, prefix with `uv run`.
 
 ### Todo Management
 ```bash
@@ -338,7 +435,7 @@ class TestWebScraper:
 - **Session persistence**: Test cookie extraction and storage
 - **Plugin system**: Test individual authentication plugins
 
-### Cache Testing  
+### Cache Testing
 - **Session lifecycle**: Test create, save, load, resume operations
 - **Data integrity**: Test compression and decompression
 - **Cleanup policies**: Test automatic cleanup based on age/count
@@ -346,5 +443,95 @@ class TestWebScraper:
 - **Cache doctor**: Test health validation, issue detection, and automatic repair
 - **Corruption scenarios**: Test orphaned sessions, invalid JSON, missing required fields
 - **Repair modes**: Test both dry-run and actual fix functionality
+
+## Common Issues and Solutions
+
+### Import Errors on Startup
+
+**Issue:** `ImportError: attempted relative import with no known parent package`
+
+**Cause:** Dependencies not installed or virtual environment not activated
+
+**Solution:**
+```bash
+# With uv (recommended)
+uv sync
+
+# Or with pip
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### WeasyPrint Library Loading Errors
+
+**Issue:** `OSError: cannot load library 'libpango-1.0-0'`
+
+**Cause:** System libraries not installed (WeasyPrint requires native libraries)
+
+**Solution:**
+```bash
+# Debian Trixie/Ubuntu 24.04+
+sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info
+
+# Verify installation
+ldconfig -p | grep pango
+```
+
+**Note:** Package names differ between Debian/Ubuntu versions. See System Requirements section.
+
+### Package Not Found Errors
+
+**Issue:** `E: Package 'libgdk-pixbuf2.0-0' has no installation candidate`
+
+**Cause:** Debian Trixie uses different package naming
+
+**Solution:** Use `libgdk-pixbuf-2.0-0` instead of `libgdk-pixbuf2.0-0`
+
+### Disk Space Issues During Installation
+
+**Issue:** `No space left on device` during apt operations
+
+**Cause:** `/tmp` directory or apt cache full
+
+**Solution:**
+```bash
+# Check disk space
+df -h
+
+# Clean /tmp if full
+sudo rm -rf /tmp/tmp.*
+
+# Clean apt cache
+sudo apt-get clean
+sudo rm -rf /var/lib/apt/lists/*
+sudo mkdir -p /var/lib/apt/lists/partial
+sudo apt-get update
+```
+
+### Selenium Warning
+
+**Issue:** `Selenium not available - JavaScript rendering disabled`
+
+**Cause:** Optional dependencies not installed
+
+**Solution:** This is a **warning, not an error**. JavaScript rendering is optional. To enable:
+```bash
+uv sync --extra auth
+```
+
+### Syntax Warnings (Python 3.14+)
+
+**Issue:** `SyntaxWarning: "\s" is an invalid escape sequence`
+
+**Cause:** Unescaped backslashes in regex patterns
+
+**Solution:** Use raw strings for regex patterns:
+```python
+# Wrong
+pattern = '[,\s]+'
+
+# Correct
+pattern = r'[,\s]+'
+```
 
 ## Instructions to follow
